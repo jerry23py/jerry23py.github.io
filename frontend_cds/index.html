@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>NYSC Anti-HIV & AIDS CDS — Spread the Message, Not the Virus</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="container header-inner">
+      <div class="logo">NYSC Anti-HIV CDS</div>
+      <nav class="nav" aria-label="Main navigation">
+        <ul class="nav-list">
+          <li><a href="#home">Home</a></li>
+          <li><a href="#mission">About</a></li>
+          <li><a href="#programs">Programs</a></li>
+          <li><a href="#Donate">Donate</a></li>
+          <li><a href="#gallery">Gallery</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+      </nav>
+      <button class="hamburger" aria-label="Open menu" aria-expanded="false">☰</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="home" class="hero">
+      <div class="container hero-inner">
+        <div class="hero-text">
+          <h2>Spread the Message, Not the Virus</h2>
+            <p>NYSC Anti-HIV & AIDS CDS Group — join our outreach,
+                testing and education programs.</p>
+          
+            <div class="cta-row">
+            <a class="btn btn-primary" href="#contact"> Become a Volunteer</a>
+            <a class="btn btn-outline" href="#programs">See Programs</a>
+          </div>
+        </div>
+        <div class="hero-art" role="img" aria-label="Rotating hero images">
+          <div class="hero-slider" aria-hidden="true">
+            <div class="slide" style="background-image: url('image/CDS.jpg')"></div>
+            <div class="slide" style="background-image: url('image/images.jpg')"></div>
+            <div class="slide" style="background-image: url('image/IMG-20250821-WA0049.jpg')"></div>
+          </div>
+          <div class="slider-controls" aria-hidden="true">
+            <button class="slider-prev" aria-label="Previous image">‹</button>
+            <button class="slider-next" aria-label="Next image">›</button>
+          </div>
+        </div>
+      </div>
+      
+    </section>
+
+    <section id="mission" class="section">
+      <div class="container mission-grid">
+        <div class="mission-content">
+          <h1>About</h1>
+          <p>
+            We are the <strong>Anti-HIV & AIDS CDS Group</strong> under the NYSC.
+            Our work includes outreach, testing and education programs that
+            reduce stigma and increase access to care. We stand for the message:
+            <em>“Spread the Message, Not the Virus.”</em>
+          </p>
+
+          <h2>Our Mission</h2>
+          <p>Educate — Test — Support. We mobilize NYSC members to reduce HIV stigma and increase testing.</p>
+
+          <h2>Our Vision</h2>
+          <p>To create healthier, better-informed communities where stigma is reduced and everyone has access to testing, treatment and support.</p>
+        </div>
+
+        <div class="mission-image" aria-hidden="true">
+          <img src="image/cds group.png" alt="NYSC outreach" />
+        </div>
+      </div>
+    </section>
+
+    <section id="programs" class="section light">
+      <div class="container">
+        <h2>Programs</h2>
+        <div class="grid programs-grid" role="list">
+          <article class="card" role="listitem">
+            <div class="card-icon">📣</div>
+            <h3>Community Sensitization</h3>
+            <p>Public talks and materials to educate communities.</p>
+          </article>
+          <article class="card" role="listitem">
+            <div class="card-icon">🧪</div>
+            <h3>Free Testing</h3>
+            <p>Partnered testing drives with local clinics.</p>
+          </article>
+          <article class="card" role="listitem">
+            <div class="card-icon">🎓</div>
+            <h3>School Outreach</h3>
+            <p>Age-appropriate programs for students.</p>
+          </article>
+          <article class="card" role="listitem">
+            <div class="card-icon">🤝</div>
+            <h3>Support & Counseling</h3>
+            <p>Connect people to counselling and care.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="gallery" class="section">
+      <div class="container">
+        <h2>Gallery</h2>
+        <div class="gallery-wrap">
+          <div class="gallery-slider" aria-hidden="true">
+            <div class="g-slide" style="background-image:url('image/CDS.jpg')"></div>
+            <div class="g-slide" style="background-image:url('image/IMG-20251129-WA0000.jpg')"></div>
+            <div class="g-slide" style="background-image:url('image/IMG-20251107-WA0017.jpg')"></div>
+          </div>
+          <a class="gallery btn-gallery" href="#gallery"> Go to GALLERY</a>
+          <div class="gallery-controls">
+            <button class="gallery-prev" aria-label="Previous">‹</button>
+            <button class="gallery-next" aria-label="Next">›</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="Donate" class="section">
+      <div class="container">
+        <h2>Resources</h2>
+        <ul>
+          <a class="btn btn-primary" href="Donate.html"> Donate</a>
+          <a class="btn btn-primary" href="#Donate"> Download: Awareness flyers (PDF)</a>
+    
+        </ul>
+      </div>
+    </section>
+    
+
+
+    <section id="contact" class="section contact-section">
+      <div class="container two-col">
+        <div>
+          <h2>Contact & Volunteer</h2>
+          <p>Fill the form to volunteer or request outreach.</p>
+          <form id="contactForm" class="contact-form" novalidate>
+            <label for="name">Full name</label>
+            <input id="name" name="name" type="text" required>
+
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" required>
+
+            <label for="phone">Phone (optional)</label>
+            <input id="phone" name="phone" type="tel">
+
+            <label for="message">Message</label>
+            <textarea id="message" name="message" rows="5" required></textarea>
+
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary">Send Message</button>
+              <div id="formStatus" role="status" aria-live="polite" class="muted"></div>
+            </div>
+          </form>
+        </div>
+        <!-- FOOTER SECTION -->
+    <footer>
+        <div class="footer-content">
+          <h3>Anti-HIV & AIDS CDS Group</h3>
+          <p>“Spread the Message, Not the Virus.”</p>
+
+          <p><strong>Contact:</strong> +234 916 670 9943</p>
+          <p><strong>Email:</strong> cds-anti-hiv@example.com</p>
+          <p><strong>Location:</strong> NYSC Secretariat, Kastina state</p>
+
+          <div class="footer-links">
+             <a href="#">Facebook</a>
+             <a href="#">Instagram</a>
+              <a href="#">Twitter</a>
+          </div>
+      </div>
+
+      <p class="footer-bottom">© 2025 Anti-HIV & AIDS CDS Group — All Rights Reserved</p>
+    </footer>
+
+
+
+  <script src="script.js" defer></script>
+</body>
+</html>

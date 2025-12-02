@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Donate | CDS Anti-HIV & AIDS</title>
+
+    <link rel="stylesheet" href="style.css">
+
+    <style>
+        /* Inline page-specific styling (optional) */
+
+        body {
+            background: #f7f7f7;
+            font-family: Arial, sans-serif;
+        }
+
+        .donation-container {
+            max-width: 450px;
+            margin: 40px auto;
+            padding: 25px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        h2 {
+            text-align: center;
+            color: #d30000;
+            margin-bottom: 20px;
+            font-size: 26px;
+        }
+
+        form label {
+            font-weight: bold;
+        }
+
+        form input {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0 18px 0;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 16px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #d30000;
+            color: white;
+            border: none;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #b60000;
+        }
+
+        #status {
+            margin-top: 15px;
+            text-align: center;
+            font-weight: bold;
+            color: #444;
+        }
+    </style>
+</head>
+<body>
+
+<div class="donation-container">
+    <h2>Make a Donation</h2>
+
+    <form id="donationForm">
+        <label>Full Name:</label>
+        <input type="text" id="fullname" required>
+
+        <label>State Code:</label>
+        <input type="text" id="statecode" required>
+
+        <label>Phone Number:</label>
+        <input type="text" id="phone" required>
+
+        <label>Donation Amount (₦):</label>
+        <input type="number" id="amount" required>
+
+        <button type="submit">Proceed to Payment</button>
+    </form>
+
+    <p id="status"></p>
+</div>
+
+<!-- Donation JS -->
+<script src="donate.js"></script>
+
+</body>
+</html>
