@@ -20,7 +20,6 @@ db = SQLAlchemy(app)
 class Donation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     fullname = db.Column(db.String(150), nullable=False)
-    statecode = db.Column(db.String(50), nullable=False)
     phone = db.Column(db.String(20), nullable=False)
     amount = db.Column(db.Integer, nullable=False)
     reference = db.Column(db.String(50), unique=True, nullable=False)
@@ -46,7 +45,6 @@ def create_table():
         CREATE TABLE IF NOT EXISTS donations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             fullname TEXT,
-            statecode TEXT,
             phone TEXT,
             amount INTEGER,
             reference TEXT,
@@ -65,7 +63,6 @@ def donate():
     data = request.get_json()
 
     fullname = data["fullname"]
-    statecode = data["statecode"]
     phone = data["phone"]
     amount = int(data["amount"]) * 100  # Paystack uses kobo
 
@@ -78,7 +75,7 @@ def donate():
     }
 
     payload = {
-        "email": f"{statecode}@donor.com",  # Paystack requires email
+        "email": f"{fullname}@donor.com",  # Paystack requires email
         "amount": amount
     }
 
@@ -93,8 +90,8 @@ def donate():
     # save donor temporarily in DB
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("INSERT INTO donations (fullname, statecode, phone, amount, reference) VALUES (?, ?, ?, ?, ?)",
-              (fullname, statecode, phone, amount, reference))
+    c.execute("INSERT INTO donations (fullname, phone, amount, reference) VALUES (?, ?, ?, ?)",
+              (fullname, phone, amount, reference))
     conn.commit()
     conn.close()
 
@@ -112,7 +109,6 @@ def donation_status(reference):
 
     return jsonify({
         "fullname": donation.fullname,
-        "statecode": donation.statecode,
         "amount": donation.amount,
         "status": donation.status,
         "reference": donation.reference
