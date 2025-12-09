@@ -7,6 +7,12 @@
     <style>
         body { font-family: Arial; background: #f4f4f4; }
         .box { width: 90%; max-width: 900px; background: white; margin: 30px auto; padding: 20px; border-radius: 10px; }
+        .login-box { text-align: center; padding: 40px; }
+        .login-box input { padding: 10px; width: 100%; max-width: 300px; font-size: 16px; margin: 10px 0; }
+        .login-box button { background: #0a63ff; color: white; padding: 10px 30px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        .login-box button:hover { background: #094bd1; }
+        .error { color: red; margin: 10px 0; }
+        #adminContent { display: none; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { border-bottom: 1px solid #ddd; padding: 10px; text-align: left; }
         #downloadBtn {
@@ -18,12 +24,35 @@
             border-radius: 5px;
             text-decoration: none;
         }
+        #logoutBtn {
+            display: inline-block;
+            background: #ff6b6b;
+            padding: 10px 20px;
+            color: white;
+            margin-top: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        #logoutBtn:hover { background: #ee5a52; }
     </style>
 </head>
 <body>
 
-<div class="box">
+<div class="box" id="loginBox">
+    <div class="login-box">
+        <h2>Admin Access</h2>
+        <p>Enter the admin password to access the dashboard.</p>
+        <input type="password" id="passwordInput" placeholder="Enter password" />
+        <button onclick="authenticate()">Login</button>
+        <div id="loginError" class="error"></div>
+    </div>
+</div>
+
+<div class="box" id="adminContent">
     <h2>Paid Members</h2>
+    <button id="logoutBtn" onclick="logout()">Logout</button>
     <p style="color: #666; font-size: 0.9em;">
         <strong>Note:</strong> This admin panel requires the backend API to be deployed. 
         Update the <code>API_URL</code> in the script to point to your live backend.
@@ -45,41 +74,78 @@
 </div>
 
 <script>
+// ==================== AUTHENTICATION ====================
+// IMPORTANT: This is client-side only. For production, use server-side authentication.
+// Change this password to something secure. In production, use proper backend auth.
+const ADMIN_PASSWORD = "admin123";
+
+function authenticate() {
+    const passwordInput = document.getElementById("passwordInput").value;
+    const loginError = document.getElementById("loginError");
+
+    if (passwordInput === ADMIN_PASSWORD) {
+        // Store authentication in session (cleared when browser closes)
+        sessionStorage.setItem("adminAuth", "true");
+        showAdminPanel();
+    } else {
+        loginError.innerText = "Incorrect password. Try again.";
+    }
+}
+
+function logout() {
+    sessionStorage.removeItem("adminAuth");
+    document.getElementById("loginBox").style.display = "block";
+    document.getElementById("adminContent").style.display = "none";
+    document.getElementById("passwordInput").value = "";
+}
+
+function showAdminPanel() {
+    document.getElementById("loginBox").style.display = "none";
+    document.getElementById("adminContent").style.display = "block";
+    loadPaidMembers();
+}
+
+// Check if user is already authenticated (from previous session in same tab)
+if (sessionStorage.getItem("adminAuth") === "true") {
+    showAdminPanel();
+}
+
+// ==================== LOAD DATA ====================
 // Configurable API URL. Update this to your deployed backend when ready.
-// Example: const API_URL = 'https://your-backend.render.com';
 const API_URL = 'http://127.0.0.1:5000';
 
-// Fetch and display paid members
-fetch(`${API_URL}/paid-users`)
-    .then(res => {
-        if (!res.ok) throw new Error(`Server error: ${res.status}`);
-        return res.json();
-    })
-    .then(data => {
-        const table = document.getElementById("paidTable");
-        if (!data || data.length === 0) {
-            table.innerHTML = '<tr><td colspan="3" style="text-align:center;">No paid members found.</td></tr>';
-            return;
-        }
-        data.forEach(d => {
-            table.innerHTML += `
-                <tr>
-                    <td>${d.fullname}</td>
-                    <td>${d.phone}</td>
-                    <td>₦${d.amount}</td>
-                </tr>
-            `;
-        });
+function loadPaidMembers() {
+    fetch(`${API_URL}/paid-users`)
+        .then(res => {
+            if (!res.ok) throw new Error(`Server error: ${res.status}`);
+            return res.json();
+        })
+        .then(data => {
+            const table = document.getElementById("paidTable");
+            if (!data || data.length === 0) {
+                table.innerHTML = '<tr><td colspan="3" style="text-align:center;">No paid members found.</td></tr>';
+                return;
+            }
+            data.forEach(d => {
+                table.innerHTML += `
+                    <tr>
+                        <td>${d.fullname}</td>
+                        <td>${d.phone}</td>
+                        <td>₦${d.amount}</td>
+                    </tr>
+                `;
+            });
 
-        // Enable CSV download if endpoint exists
-        const downloadBtn = document.getElementById("downloadBtn");
-        downloadBtn.href = `${API_URL}/download-csv`;
-        downloadBtn.style.pointerEvents = 'auto';
-    })
-    .catch(err => {
-        const errorDiv = document.getElementById("errorMsg");
-        errorDiv.innerText = `Error loading data: ${err.message}. Ensure the backend API is running at ${API_URL}`;
-    });
+            // Enable CSV download
+            const downloadBtn = document.getElementById("downloadBtn");
+            downloadBtn.href = `${API_URL}/download-csv`;
+            downloadBtn.style.pointerEvents = 'auto';
+        })
+        .catch(err => {
+            const errorDiv = document.getElementById("errorMsg");
+            errorDiv.innerText = `Error loading data: ${err.message}. Ensure the backend API is running at ${API_URL}`;
+        });
+}
 </script>
 
 </body>
