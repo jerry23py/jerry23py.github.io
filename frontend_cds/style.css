@@ -170,6 +170,7 @@ header {
   transition: 0.25s;
   border: 2px solid;
   
+  
 }
 
 .btn-primary {
@@ -191,6 +192,17 @@ header {
 .btn-outline:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+.btn-small {
+  display: inline-block;
+  padding: 8px 14px;
+  background: #28a745;
+  color: white;
+  text-decoration: none;
+  border-radius: 5px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
 
 /* Space between hero paragraph and call-to-action buttons */
 .cta-row {

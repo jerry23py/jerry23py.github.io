@@ -1,0 +1,15 @@
+# Ignore SQLite databases and local instance files
+*.db
+instance/
+cds_backend/donations.db
+donations.db
+
+# Python/cache
+__pycache__/
+*.pyc
+
+# Environment files
+.env
+
+# Node
+node_modules/
