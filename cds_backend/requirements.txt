@@ -1,3 +1,5 @@
 Flask
 Flask_SQLAlchemy
 Flask_Cors
+requests
+gunicorn

@@ -5,12 +5,13 @@ from datetime import datetime
 import time
 import sqlite3
 import requests
+import os
 
 app = Flask(__name__)
 CORS(app)  # allows frontend to call API
 
 # Database setup
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///donations.db"
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.environ.get('DONATIONS_DB', 'donations.db')}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
@@ -33,11 +34,13 @@ with app.app_context():
 
 # Paystack configuration
 
-PAYSTACK_SECRET_KEY = "YOUR_SECRET_KEY_HERE"
+# Load sensitive config from environment variables
+PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "YOUR_SECRET_KEY_HERE")
+DB_PATH = os.environ.get("DONATIONS_DB", "donations.db")
 
 # -------- DATABASE SETUP ----------
 def create_table():
-    conn = sqlite3.connect("donations.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""
         CREATE TABLE IF NOT EXISTS donations (
@@ -88,7 +91,7 @@ def donate():
     payment_url = response["data"]["authorization_url"]
 
     # save donor temporarily in DB
-    conn = sqlite3.connect("donations.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("INSERT INTO donations (fullname, statecode, phone, amount, reference) VALUES (?, ?, ?, ?, ?)",
               (fullname, statecode, phone, amount, reference))
@@ -121,7 +124,7 @@ def paystack_webhook():
     if event["event"] == "charge.success":
         reference = event["data"]["reference"]
 
-        conn = sqlite3.connect("donations.db")
+        conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("UPDATE donations SET status='paid' WHERE reference=?", (reference,))
         conn.commit()
@@ -132,4 +135,7 @@ def paystack_webhook():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Use PORT env var if provided (useful for hosting platforms)
+    port = int(os.environ.get("PORT", 5000))
+    # Bind to 0.0.0.0 so the service is reachable from outside
+    app.run(host="0.0.0.0", port=port, debug=(os.environ.get("FLASK_DEBUG", "False") == "True"))
