@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Gallery — NYSC Anti-HIV CDS</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .gallery-grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(200px,1fr)); gap:16px; }
+    .thumb { border-radius:8px; overflow:hidden; background:#eee; }
+    .thumb img { width:100%; height:180px; object-fit:cover; display:block; }
+    .thumb .meta { padding:8px; font-size:0.9rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container header-inner">
+      <div class="logo">NYSC Anti-HIV CDS</div>
+      <nav class="nav" aria-label="Main navigation">
+        <ul class="nav-list">
+          <li><a href="../index.html">Home</a></li>
+          <li><a href="../index.html#programs">Programs</a></li>
+          <li><a href="../index.html#contact">Contact</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="section">
+    <div class="container">
+      <h1>Gallery</h1>
+      <p>All images — sorted by date and title.</p>
+      <div id="galleryGrid" class="gallery-grid"></div>
+    </div>
+  </main>
+
+  <script>
+    const API = (function(){ return 'http://127.0.0.1:5000'; })();
+    async function loadGallery(){
+      try{
+        const res = await fetch(`${API}/gallery`);
+        if(!res.ok) throw new Error('Server error '+res.status);
+        const images = await res.json();
+        const grid = document.getElementById('galleryGrid');
+        if(images.length===0) { grid.innerHTML = '<p>No images yet.</p>'; return; }
+        images.forEach(img => {
+          const el = document.createElement('div'); el.className='thumb';
+          el.innerHTML = `<a href="${img.url}" target="_blank" rel="noopener"><img src="${img.url}" alt="${img.title||'Gallery image'}"></a><div class="meta"><strong>${img.title||''}</strong><div>${img.taken_at||img.uploaded_at||''}</div></div>`;
+          grid.appendChild(el);
+        });
+      }catch(e){ document.getElementById('galleryGrid').innerText = 'Error loading gallery: '+e.message; }
+    }
+    loadGallery();
+  </script>
+</body>
+</html>

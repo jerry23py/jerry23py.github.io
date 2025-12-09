@@ -60,6 +60,18 @@
 
     <a id="downloadBtn" href="#">Download CSV</a>
 
+    <h3 style="margin-top:20px">Upload Gallery Image</h3>
+    <form id="uploadForm" enctype="multipart/form-data">
+        <label>Title</label><br>
+        <input type="text" id="imgTitle" name="title" placeholder="Image title" style="width:100%;max-width:400px; padding:8px"><br>
+        <label>Date taken (optional)</label><br>
+        <input type="date" id="imgDate" name="taken_at" style="padding:8px"><br>
+        <label style="margin-top:8px">Image file</label><br>
+        <input type="file" id="imgFile" name="file" accept="image/*"><br>
+        <button type="button" onclick="uploadImage()" style="margin-top:8px">Upload Image</button>
+        <div id="uploadStatus" style="margin-top:8px"></div>
+    </form>
+
     <table>
         <thead>
             <tr>
@@ -145,6 +157,34 @@ function loadPaidMembers() {
             const errorDiv = document.getElementById("errorMsg");
             errorDiv.innerText = `Error loading data: ${err.message}. Ensure the backend API is running at ${API_URL}`;
         });
+}
+
+// ----------------- IMAGE UPLOAD -----------------
+async function uploadImage() {
+    const statusEl = document.getElementById('uploadStatus');
+    statusEl.innerText = '';
+    const fileEl = document.getElementById('imgFile');
+    const title = document.getElementById('imgTitle').value;
+    const date = document.getElementById('imgDate').value;
+    if (!fileEl.files || fileEl.files.length === 0) { statusEl.innerText = 'Select an image file.'; return; }
+    const fd = new FormData();
+    fd.append('file', fileEl.files[0]);
+    fd.append('title', title);
+    if (date) fd.append('taken_at', date);
+
+    try {
+        statusEl.innerText = 'Uploading...';
+        const resp = await fetch(`${API_URL}/upload-image`, { method: 'POST', body: fd });
+        const result = await resp.json();
+        if (!resp.ok) { statusEl.innerText = 'Upload failed: ' + (result.message || resp.status); return; }
+        statusEl.innerHTML = 'Uploaded. <a href="' + result.url + '" target="_blank">View</a>';
+        // clear form
+        document.getElementById('imgTitle').value = '';
+        document.getElementById('imgDate').value = '';
+        document.getElementById('imgFile').value = '';
+    } catch (err) {
+        statusEl.innerText = 'Network error: ' + err.message;
+    }
 }
 </script>
 
