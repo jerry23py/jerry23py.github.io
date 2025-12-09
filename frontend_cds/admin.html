@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Admin Panel - Paid Members</title>
+    <style>
+        body { font-family: Arial; background: #f4f4f4; }
+        .box { width: 90%; max-width: 900px; background: white; margin: 30px auto; padding: 20px; border-radius: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border-bottom: 1px solid #ddd; padding: 10px; text-align: left; }
+        #downloadBtn {
+            display: inline-block;
+            background: green;
+            padding: 10px 20px;
+            color: white;
+            margin-top: 10px;
+            border-radius: 5px;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h2>Paid Members</h2>
+    <p style="color: #666; font-size: 0.9em;">
+        <strong>Note:</strong> This admin panel requires the backend API to be deployed. 
+        Update the <code>API_URL</code> in the script to point to your live backend.
+    </p>
+
+    <a id="downloadBtn" href="#">Download CSV</a>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Amount (NGN)</th>
+            </tr>
+        </thead>
+        <tbody id="paidTable"></tbody>
+    </table>
+    <div id="errorMsg" style="color: red; margin-top: 10px;"></div>
+</div>
+
+<script>
+// Configurable API URL. Update this to your deployed backend when ready.
+// Example: const API_URL = 'https://your-backend.render.com';
+const API_URL = 'http://127.0.0.1:5000';
+
+// Fetch and display paid members
+fetch(`${API_URL}/paid-users`)
+    .then(res => {
+        if (!res.ok) throw new Error(`Server error: ${res.status}`);
+        return res.json();
+    })
+    .then(data => {
+        const table = document.getElementById("paidTable");
+        if (!data || data.length === 0) {
+            table.innerHTML = '<tr><td colspan="3" style="text-align:center;">No paid members found.</td></tr>';
+            return;
+        }
+        data.forEach(d => {
+            table.innerHTML += `
+                <tr>
+                    <td>${d.fullname}</td>
+                    <td>${d.phone}</td>
+                    <td>₦${d.amount}</td>
+                </tr>
+            `;
+        });
+
+        // Enable CSV download if endpoint exists
+        const downloadBtn = document.getElementById("downloadBtn");
+        downloadBtn.href = `${API_URL}/download-csv`;
+        downloadBtn.style.pointerEvents = 'auto';
+    })
+    .catch(err => {
+        const errorDiv = document.getElementById("errorMsg");
+        errorDiv.innerText = `Error loading data: ${err.message}. Ensure the backend API is running at ${API_URL}`;
+    });
+</script>
+
+</body>
+</html>
