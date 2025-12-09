@@ -12,7 +12,6 @@ if (form) {
 
         const data = {
             fullname: document.getElementById("fullname").value,
-            statecode: document.getElementById("statecode").value,
             phone: document.getElementById("phone").value,
             amount: document.getElementById("amount").value
         };
