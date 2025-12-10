@@ -261,6 +261,9 @@ def download_csv():
         'Content-Disposition': 'attachment; filename=donations.csv'
     })
 
+@app.route("/")
+def home():
+    return jsonify({"message": "Backend is running successfully!"})
 
 
 if __name__ == "__main__":
