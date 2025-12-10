@@ -9,6 +9,7 @@ if (form) {
 
         const data = {
             fullname: document.getElementById("fullname").value,
+            email: document.getElementById("email").value,
             phone: document.getElementById("phone").value,
             amount: document.getElementById("amount").value
         };
