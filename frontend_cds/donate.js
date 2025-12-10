@@ -1,9 +1,6 @@
-// Configurable backend URL. Replace with your deployed backend (HTTPS) when ready.
-const BACKEND_URL = (function(){
-    // If you host backend on a different domain, set it here, e.g.:
-    // return 'https://api.yourdomain.com';
-    return 'http://127.0.0.1:5000';
-})();
+// Backend URL comes from `frontend_cds/config.js` (window.BACKEND_URL).
+// Fall back to localhost for local development if not provided.
+const BACKEND_URL = window.BACKEND_URL || 'http://127.0.0.1:5000';
 
 const form = document.getElementById("donationForm");
 if (form) {

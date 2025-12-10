@@ -85,11 +85,13 @@
     <div id="errorMsg" style="color: red; margin-top: 10px;"></div>
 </div>
 
+<script src="config.js"></script>
 <script>
 // ==================== AUTHENTICATION ====================
 // IMPORTANT: This is client-side only. For production, use server-side authentication.
 // Change this password to something secure. In production, use proper backend auth.
-const ADMIN_PASSWORD = "admin123";
+// `config.js` can override `window.ADMIN_PASSWORD`.
+const ADMIN_PASSWORD = window.ADMIN_PASSWORD || "admin123";
 
 function authenticate() {
     const passwordInput = document.getElementById("passwordInput").value;
@@ -123,8 +125,8 @@ if (sessionStorage.getItem("adminAuth") === "true") {
 }
 
 // ==================== LOAD DATA ====================
-// Configurable API URL. Update this to your deployed backend when ready.
-const API_URL = 'http://127.0.0.1:5000';
+// Configured API URL (set `window.BACKEND_URL` in `config.js` when deploying).
+const API_URL = window.BACKEND_URL || 'http://127.0.0.1:5000';
 
 function loadPaidMembers() {
     fetch(`${API_URL}/paid-users`)

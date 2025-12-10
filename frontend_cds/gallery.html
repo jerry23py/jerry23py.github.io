@@ -34,8 +34,10 @@
     </div>
   </main>
 
+  <script src="config.js"></script>
   <script>
-    const API = (function(){ return 'http://127.0.0.1:5000'; })();
+    // Use configured backend URL (set in config.js) with localhost fallback
+    const API = window.BACKEND_URL || 'http://127.0.0.1:5000';
     async function loadGallery(){
       try{
         const res = await fetch(`${API}/gallery`);
