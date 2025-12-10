@@ -188,37 +188,55 @@ def paystack_webhook():
 # ---------------- GALLERY / IMAGES ----------------
 @app.route('/upload-image', methods=['POST'])
 def upload_image():
-    # Expect multipart/form-data with fields: file, title, taken_at (ISO date optional)
-    if 'file' not in flask_request.files:
+    # Support multiple files (album upload). Accepts form fields:
+    # - file: one or more files (multipart)
+    # - album_title: optional title applied to all files
+    # - album_date: optional date (taken_at) applied to all files
+    files = flask_request.files.getlist('file')
+    if not files or len(files) == 0:
         return jsonify({'message': 'No file part in request'}), 400
-    file = flask_request.files['file']
-    title = flask_request.form.get('title', '')
-    taken_at = flask_request.form.get('taken_at', None)
 
-    if file.filename == '':
-        return jsonify({'message': 'No selected file'}), 400
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        # prefix with timestamp to avoid collisions
+    album_title = flask_request.form.get('album_title', '')
+    album_date = flask_request.form.get('album_date', None)
+
+    uploaded_urls = []
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    for f in files:
+        if not f or f.filename == '':
+            continue
+        if not allowed_file(f.filename):
+            # skip unsupported file types
+            app.logger.warning(f"Skipped unsupported file type: {f.filename}")
+            continue
+
+        filename = secure_filename(f.filename)
         prefix = str(int(time.time()))
+        # include a short random suffix to reduce collision chance when uploading multiple quickly
         stored_name = f"{prefix}_{filename}"
         save_path = os.path.join(UPLOAD_FOLDER, stored_name)
-        file.save(save_path)
+        f.save(save_path)
 
-        # store record in DB
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
+        # store record in DB using album metadata
         c.execute('INSERT INTO images (filename, title, taken_at, uploaded_at) VALUES (?, ?, ?, ?)',
-                  (stored_name, title, taken_at, datetime.utcnow().isoformat()))
-        conn.commit()
-        conn.close()
+                  (stored_name, album_title, album_date, datetime.utcnow().isoformat()))
 
-        # return image URL path
         base = flask_request.host_url.rstrip('/')
         url = f"{base}/gallery-image/{stored_name}"
-        return jsonify({'message': 'Uploaded', 'url': url}), 201
-    else:
-        return jsonify({'message': 'File type not allowed'}), 400
+        uploaded_urls.append(url)
+
+    conn.commit()
+    conn.close()
+
+    if len(uploaded_urls) == 0:
+        return jsonify({'message': 'No valid images were uploaded'}), 400
+
+    # If only one file was uploaded, keep backward-compatible 'url' field
+    if len(uploaded_urls) == 1:
+        return jsonify({'message': 'Uploaded', 'url': uploaded_urls[0], 'urls': uploaded_urls}), 201
+    return jsonify({'message': 'Uploaded', 'urls': uploaded_urls}), 201
 
 
 @app.route('/gallery', methods=['GET'])
