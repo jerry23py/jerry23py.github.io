@@ -95,11 +95,21 @@ create_table()
 # ---------- DONATION ROUTE -----------
 @app.route("/donate", methods=["POST"])
 def donate():
+    # Check if PAYSTACK_SECRET_KEY is set
+    if not PAYSTACK_SECRET_KEY:
+        app.logger.error("PAYSTACK_SECRET_KEY is not configured")
+        return jsonify({"message": "Payment system not configured. Please contact support."}), 500
+    
     data = request.get_json()
 
-    fullname = data["fullname"]
-    phone = data["phone"]
-    amount = int(data["amount"]) * 100  # Paystack uses kobo
+    fullname = data.get("fullname", "")
+    email = data.get("email", "")
+    phone = data.get("phone", "")
+    amount = int(data.get("amount", 0)) * 100  # Paystack uses kobo
+    
+    # Validate input
+    if not fullname or not email or not amount:
+        return jsonify({"message": "Full name, email, and amount are required"}), 400
 
     # create Paystack transaction
     url = "https://api.paystack.co/transaction/initialize"
@@ -110,17 +120,28 @@ def donate():
     }
 
     payload = {
-        "email": f"{fullname}@donor.com",  # Paystack requires email
+        "email": email,  # Use the actual email provided by the user
         "amount": amount
     }
 
-    response = requests.post(url, json=payload, headers=headers).json()
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=10).json()
+    except Exception as e:
+        app.logger.error(f"Paystack API request failed: {e}")
+        return jsonify({"message": "Failed to connect to payment provider"}), 502
 
-    if not response["status"]:
-        return jsonify({"message": "Paystack error"}), 400
+    # Check if response has status field and it's True
+    if not response.get("status", False):
+        error_msg = response.get("message", "Unknown Paystack error")
+        app.logger.warning(f"Paystack error: {error_msg}")
+        return jsonify({"message": f"Payment error: {error_msg}"}), 400
 
-    reference = response["data"]["reference"]
-    payment_url = response["data"]["authorization_url"]
+    try:
+        reference = response["data"]["reference"]
+        payment_url = response["data"]["authorization_url"]
+    except KeyError:
+        app.logger.error(f"Unexpected Paystack response structure: {response}")
+        return jsonify({"message": "Invalid payment response"}), 500
 
     # save donor temporarily in DB
     conn = sqlite3.connect(DB_PATH)
