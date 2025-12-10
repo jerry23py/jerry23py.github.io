@@ -6,8 +6,13 @@ import time
 import sqlite3
 import requests
 import os
+from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 from flask import send_from_directory, abort, request as flask_request
+
+# Load local .env if present (for local development). The file is gitignored.
+basedir = os.path.abspath(os.path.dirname(__file__))
+load_dotenv(os.path.join(basedir, '.env'))
 
 app = Flask(__name__)
 CORS(app)  # allows frontend to call API
@@ -45,7 +50,9 @@ with app.app_context():
 # Paystack configuration
 
 # Load sensitive config from environment variables
-PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "YOUR_SECRET_KEY_HERE")
+PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY")
+if not PAYSTACK_SECRET_KEY:
+    app.logger.warning("PAYSTACK_SECRET_KEY not set. /donate will fail until this env var is provided.")
 DB_PATH = os.environ.get("DONATIONS_DB", "donations.db")
 UPLOAD_FOLDER = os.environ.get("GALLERY_FOLDER", os.path.join(os.getcwd(), "gallery_images"))
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif"}
