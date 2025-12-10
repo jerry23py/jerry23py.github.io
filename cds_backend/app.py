@@ -291,7 +291,32 @@ def download_csv():
 
 @app.route("/")
 def home():
+    # Serve frontend index when visiting the backend root
+    FRONTEND_DIR = os.path.abspath(os.path.join(basedir, '..'))
+    index_path = os.path.join(FRONTEND_DIR, 'index.html')
+    if os.path.exists(index_path):
+        return send_from_directory(FRONTEND_DIR, 'index.html')
     return jsonify({"message": "Backend is running successfully!"})
+
+
+# Catch-all to serve frontend static files (placed after API routes so APIs take precedence)
+@app.route('/<path:path>')
+def serve_frontend(path):
+    FRONTEND_DIR = os.path.abspath(os.path.join(basedir, '..'))
+    # First try files in project root
+    candidate = os.path.join(FRONTEND_DIR, path)
+    if os.path.exists(candidate):
+        return send_from_directory(FRONTEND_DIR, path)
+    # Then try files in frontend_cds folder
+    candidate = os.path.join(FRONTEND_DIR, 'frontend_cds', path)
+    if os.path.exists(candidate):
+        return send_from_directory(os.path.join(FRONTEND_DIR, 'frontend_cds'), path)
+    # Then try image folder
+    candidate = os.path.join(FRONTEND_DIR, 'image', path)
+    if os.path.exists(candidate):
+        return send_from_directory(os.path.join(FRONTEND_DIR, 'image'), path)
+    # Not found — return 404
+    abort(404)
 
 
 if __name__ == "__main__":
