@@ -58,6 +58,7 @@
     </p>
 
     <a id="downloadBtn" href="#">Download CSV</a>
+    <button id="resetDbBtn" style="background:#ff6b6b;color:#fff;margin-left:12px;padding:10px 14px;border-radius:5px;border:none;cursor:pointer;" onclick="resetDonations()">Reset Donations DB</button>
 
     <h3 style="margin-top:20px">Pending Donations</h3>
     <table>
@@ -103,28 +104,32 @@
 <script src="config.js"></script>
 <script>
 // ==================== AUTHENTICATION ====================
-// IMPORTANT: This is client-side only. For production, use server-side authentication.
-// Change this password to something secure. In production, use proper backend auth.
-// `config.js` can override `window.ADMIN_PASSWORD`.
-const ADMIN_PASSWORD = window.ADMIN_PASSWORD || "admin123";
+// Now using server-side admin authentication via /admin/login
+const ADMIN_PASSWORD = window.ADMIN_PASSWORD || "admin123"; // only used as fallback for older clients
 
-function authenticate() {
+async function authenticate() {
     const passwordInput = document.getElementById("passwordInput").value;
     const loginError = document.getElementById("loginError");
 
-    if (passwordInput === ADMIN_PASSWORD) {
-        // Store authentication and the admin key in session (cleared when browser closes)
-        sessionStorage.setItem("adminAuth", "true");
-        sessionStorage.setItem("adminPassword", passwordInput);
+    try {
+        const resp = await fetch(`${API_URL}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: passwordInput })});
+        if (!resp.ok) {
+            loginError.innerText = 'Incorrect password. Try again.';
+            return;
+        }
+        const data = await resp.json();
+        // Store token in sessionStorage
+        sessionStorage.setItem('adminAuth', 'true');
+        sessionStorage.setItem('adminToken', data.token);
         showAdminPanel();
-    } else {
-        loginError.innerText = "Incorrect password. Try again.";
+    } catch (err) {
+        loginError.innerText = 'Network error: ' + err.message;
     }
 }
 
 function logout() {
     sessionStorage.removeItem("adminAuth");
-    sessionStorage.removeItem("adminPassword");
+    sessionStorage.removeItem("adminToken");
     document.getElementById("loginBox").style.display = "block";
     document.getElementById("adminContent").style.display = "none";
     document.getElementById("passwordInput").value = "";
@@ -182,8 +187,9 @@ function loadPaidMembers() {
 
 // ------------------- PENDING DONATIONS -------------------
 function loadPendingDonations() {
-    const key = sessionStorage.getItem('adminPassword') || ADMIN_PASSWORD;
-    fetch(`${API_URL}/pending-donations`, { headers: { 'X-ADMIN-KEY': key } })
+    const token = sessionStorage.getItem('adminToken');
+    if (!token) { document.getElementById('errorMsg').innerText = 'Not authenticated'; return; }
+    fetch(`${API_URL}/pending-donations`, { headers: { 'Authorization': 'Bearer ' + token } })
         .then(res => {
             if (!res.ok) throw new Error(`Server error: ${res.status}`);
             return res.json();
@@ -192,11 +198,12 @@ function loadPendingDonations() {
             const table = document.getElementById('pendingTable');
             table.innerHTML = '';
             if (!data || data.length === 0) {
-                table.innerHTML = '<tr><td colspan="5" style="text-align:center;">No pending donations.</td></tr>';
+                table.innerHTML = '<tr><td colspan="6" style="text-align:center;">No pending donations.</td></tr>';
                 return;
             }
             data.forEach(d => {
-                const proofCell = d.proof_filename ? `<a href="${API_URL}/gallery-image/${d.proof_filename}" target="_blank">View</a>` : '—';
+                const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+                const proofCell = d.proof_filename ? `<a href="${API_URL}/protected-proof/${d.proof_filename}${tokenParam}" target="_blank">View</a>` : '—';
                 table.innerHTML += `
                     <tr>
                         <td>${d.fullname}</td>
@@ -204,7 +211,7 @@ function loadPendingDonations() {
                         <td>₦${d.amount}</td>
                         <td>${proofCell}</td>
                         <td>${d.reference}</td>
-                        <td><button onclick="validateDonation('${d.reference}')">Mark Paid</button></td>
+                        <td><button id="btn_${d.reference}" onclick="validateDonation(this, '${d.reference}')">Mark Paid</button></td>
                     </tr>
                 `;
             });
@@ -215,11 +222,14 @@ function loadPendingDonations() {
         });
 }
 
-function validateDonation(reference) {
-    const key = sessionStorage.getItem('adminPassword') || ADMIN_PASSWORD;
+function validateDonation(btn, reference) {
+    // Prevent duplicate clicks
+    try { btn.disabled = true; btn.innerText = 'Processing...'; } catch (e) {}
+    const token = sessionStorage.getItem('adminToken');
+    if (!token) { alert('Not authenticated'); btn.disabled = false; btn.innerText = 'Mark Paid'; return; }
     fetch(`${API_URL}/admin/validate-donation`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-ADMIN-KEY': key },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify({ reference })
     }).then(res => {
         if (!res.ok) return res.text().then(t => { throw new Error(t || res.status); });
@@ -230,6 +240,9 @@ function validateDonation(reference) {
     }).catch(err => {
         const errorDiv = document.getElementById("errorMsg");
         errorDiv.innerText = `Error validating donation: ${err.message}`;
+    }).finally(() => {
+        // re-enable (in case of failure) or keep disabled (button will be removed on reload)
+        try { btn.disabled = false; btn.innerText = 'Mark Paid'; } catch (e) {}
     });
 }
 
@@ -273,6 +286,26 @@ async function uploadImage() {
     } catch (err) {
         statusEl.innerText = 'Network error: ' + err.message;
     }
+}
+
+// --------- RESET DB -------------
+function resetDonations() {
+    if (!confirm('Are you sure you want to delete all donations and uploaded proofs? This cannot be undone.')) return;
+    const token = sessionStorage.getItem('adminToken');
+    if (!token) { alert('Not authenticated'); return; }
+    const btn = document.getElementById('resetDbBtn');
+    btn.disabled = true; btn.innerText = 'Resetting...';
+    fetch(`${API_URL}/admin/reset-donations`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+        .then(res => res.json())
+        .then(j => {
+            alert(`Reset complete. deleted_rows: ${j.deleted_rows || 0}, deleted_files: ${j.deleted_files || 0}`);
+            loadPendingDonations();
+            loadPaidMembers();
+        }).catch(err => {
+            alert('Reset failed: ' + err.message);
+        }).finally(() => {
+            btn.disabled = false; btn.innerText = 'Reset Donations DB';
+        });
 }
 </script>
 

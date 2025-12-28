@@ -8,7 +8,13 @@ if (form) {
         e.preventDefault();
 
         const statusEl = document.getElementById("status");
+        const loadingModal = document.getElementById('loadingModal');
+        const loadingText = document.getElementById('loadingText');
+        function showLoading(text){ if (loadingText) loadingText.innerText = text; if (loadingModal) loadingModal.style.display = 'flex'; }
+        function hideLoading(){ if (loadingModal) loadingModal.style.display = 'none'; }
+
         if (statusEl) statusEl.innerText = "Processing...";
+        showLoading('Uploading proof…');
 
         const fd = new FormData();
         fd.append('fullname', document.getElementById("fullname").value);
@@ -18,6 +24,7 @@ if (form) {
         const proofFile = document.getElementById('proof').files[0];
         if (!proofFile) {
             if (statusEl) statusEl.innerText = 'Please attach a proof of payment file.';
+            hideLoading();
             return;
         }
         fd.append('proof', proofFile);
@@ -37,10 +44,15 @@ if (form) {
             const result = await resp.json();
             if (result.reference) {
                 if (statusEl) statusEl.innerText = `Donation recorded. Reference: ${result.reference}. ${result.message || ''}`;
+                showLoading('Done');
+                // show 'Done' briefly then hide
+                setTimeout(() => { hideLoading(); }, 1500);
                 // Optionally show instructions or copy reference to clipboard
                 try { navigator.clipboard?.writeText(result.reference); } catch (e) {}
             } else {
                 if (statusEl) statusEl.innerText = "Error: " + (result.message || 'Unknown error');
+                showLoading('Error');
+                setTimeout(() => { hideLoading(); }, 1500);
             }
         } catch (err) {
             if (statusEl) statusEl.innerText = "Network error: " + err.message;
