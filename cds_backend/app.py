@@ -4,7 +4,7 @@ from flask_cors import CORS
 from datetime import datetime
 import time
 import sqlite3
-import requests
+import uuid
 import os
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
@@ -31,6 +31,7 @@ class Donation(db.Model):
     amount = db.Column(db.Integer, nullable=False)
     reference = db.Column(db.String(50), unique=True, nullable=False)
     status = db.Column(db.String(20), default="pending")
+    proof_filename = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -47,15 +48,16 @@ class Image(db.Model):
 with app.app_context():
     db.create_all()
 
-# Paystack configuration
+# Admin configuration for donation validation
 
 # Load sensitive config from environment variables
-PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY")
-if not PAYSTACK_SECRET_KEY:
-    app.logger.warning("PAYSTACK_SECRET_KEY not set. /donate will fail until this env var is provided.")
+# ADMIN_SECRET is used to authenticate admin actions (marking donations as paid)
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "admin123")
+if not os.environ.get("ADMIN_SECRET"):
+    app.logger.warning("ADMIN_SECRET not set. Using default insecure admin key; set ADMIN_SECRET in env for production.")
 DB_PATH = os.environ.get("DONATIONS_DB", "donations.db")
 UPLOAD_FOLDER = os.environ.get("GALLERY_FOLDER", os.path.join(os.getcwd(), "gallery_images"))
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif"}
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "pdf"}
 
 # Ensure upload folder exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -64,6 +66,7 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # -------- DATABASE SETUP ----------
+# Ensure donations table has a column for proof_filename (filename of uploaded receipt)
 def create_table():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -74,9 +77,16 @@ def create_table():
             phone TEXT,
             amount INTEGER,
             reference TEXT,
-            status TEXT DEFAULT 'pending'
+            status TEXT DEFAULT 'pending',
+            proof_filename TEXT
         )
     """)
+    # If the column didn't exist in older DBs, add it
+    c.execute("PRAGMA table_info(donations)")
+    cols = [r[1] for r in c.fetchall()]
+    if 'proof_filename' not in cols:
+        c.execute("ALTER TABLE donations ADD COLUMN proof_filename TEXT")
+
     c.execute("""
         CREATE TABLE IF NOT EXISTS images (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,63 +105,54 @@ create_table()
 # ---------- DONATION ROUTE -----------
 @app.route("/donate", methods=["POST"])
 def donate():
-    # Check if PAYSTACK_SECRET_KEY is set
-    if not PAYSTACK_SECRET_KEY:
-        app.logger.error("PAYSTACK_SECRET_KEY is not configured")
-        return jsonify({"message": "Payment system not configured. Please contact support."}), 500
-    
-    data = request.get_json()
+    # Accept multipart form with a required proof of payment file (field name: 'proof')
+    fullname = flask_request.form.get("fullname", "").strip()
+    email = flask_request.form.get("email", "").strip()
+    phone = flask_request.form.get("phone", "").strip()
 
-    fullname = data.get("fullname", "")
-    email = data.get("email", "")
-    phone = data.get("phone", "")
-    amount = int(data.get("amount", 0)) * 100  # Paystack uses kobo
-    
+    try:
+        amount = int(float(flask_request.form.get("amount", 0)))
+    except Exception:
+        return jsonify({"message": "Invalid amount provided"}), 400
+
     # Validate input
     if not fullname or not email or not amount:
         return jsonify({"message": "Full name, email, and amount are required"}), 400
 
-    # create Paystack transaction
-    url = "https://api.paystack.co/transaction/initialize"
+    proof = flask_request.files.get('proof')
+    if not proof or proof.filename == '':
+        return jsonify({"message": "Proof of payment file is required"}), 400
+    if not allowed_file(proof.filename):
+        return jsonify({"message": "Unsupported proof file type (allowed: png,jpg,jpeg,gif,pdf)"}), 400
 
-    headers = {
-        "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "email": email,  # Use the actual email provided by the user
-        "amount": amount
-    }
-
+    filename = secure_filename(proof.filename)
+    prefix = str(int(time.time()))
+    stored_name = f"{prefix}_{filename}"
+    save_path = os.path.join(UPLOAD_FOLDER, stored_name)
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=10).json()
+        proof.save(save_path)
     except Exception as e:
-        app.logger.error(f"Paystack API request failed: {e}")
-        return jsonify({"message": "Failed to connect to payment provider"}), 502
+        app.logger.error(f"Failed to save proof file: {e}")
+        return jsonify({"message": "Failed to save proof file"}), 500
 
-    # Check if response has status field and it's True
-    if not response.get("status", False):
-        error_msg = response.get("message", "Unknown Paystack error")
-        app.logger.warning(f"Paystack error: {error_msg}")
-        return jsonify({"message": f"Payment error: {error_msg}"}), 400
+    # generate a unique reference
+    reference = uuid.uuid4().hex[:12]
 
-    try:
-        reference = response["data"]["reference"]
-        payment_url = response["data"]["authorization_url"]
-    except KeyError:
-        app.logger.error(f"Unexpected Paystack response structure: {response}")
-        return jsonify({"message": "Invalid payment response"}), 500
-
-    # save donor temporarily in DB
+    # save donor as pending with proof filename in DB
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("INSERT INTO donations (fullname, phone, amount, reference) VALUES (?, ?, ?, ?)",
-              (fullname, phone, amount, reference))
+    c.execute("INSERT INTO donations (fullname, phone, amount, reference, proof_filename, status) VALUES (?, ?, ?, ?, ?, 'pending')",
+              (fullname, phone, amount, reference, stored_name))
     conn.commit()
     conn.close()
 
-    return jsonify({"payment_url": payment_url})
+    message = (
+        "Donation recorded as pending with proof of payment.\n"
+        "An admin will review your proof and validate the donation once confirmed.\n"
+        "Please keep the reference for follow-up."
+    )
+
+    return jsonify({"reference": reference, "message": message}), 201
 
 
 
@@ -169,20 +170,59 @@ def donation_status(reference):
         "status": donation.status,
         "reference": donation.reference
     })
-@app.route("/paystack/webhook", methods=["POST"])
-def paystack_webhook():
-    event = request.get_json()
+@app.route("/pending-donations", methods=["GET"])
+def pending_donations():
+    # Admin endpoint - requires ADMIN key in header
+    key = request.headers.get("X-ADMIN-KEY", "")
+    if key != ADMIN_SECRET:
+        return jsonify({"message": "Unauthorized"}), 401
 
-    if event["event"] == "charge.success":
-        reference = event["data"]["reference"]
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT fullname, phone, amount, reference, status, proof_filename FROM donations WHERE status='pending'")
+    rows = c.fetchall()
+    conn.close()
 
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("UPDATE donations SET status='paid' WHERE reference=?", (reference,))
-        conn.commit()
+    result = []
+    for r in rows:
+        result.append({'fullname': r[0], 'phone': r[1], 'amount': r[2], 'reference': r[3], 'status': r[4], 'proof_filename': r[5]})
+    return jsonify(result)
+
+
+@app.route('/paid-users', methods=['GET'])
+def paid_users():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT fullname, phone, amount, reference, status, proof_filename FROM donations WHERE status='paid'")
+    rows = c.fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        result.append({'fullname': r[0], 'phone': r[1], 'amount': r[2], 'reference': r[3], 'status': r[4], 'proof_filename': r[5]})
+    return jsonify(result)
+
+@app.route("/admin/validate-donation", methods=["POST"])
+def validate_donation():
+    # Admin endpoint - marks a donation as paid
+    key = request.headers.get("X-ADMIN-KEY", "")
+    if key != ADMIN_SECRET:
+        return jsonify({"message": "Unauthorized"}), 401
+
+    data = request.get_json() or {}
+    reference = data.get("reference")
+    if not reference:
+        return jsonify({"message": "Reference required"}), 400
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE donations SET status='paid' WHERE reference=?", (reference,))
+    if c.rowcount == 0:
         conn.close()
+        return jsonify({"message": "Reference not found"}), 404
+    conn.commit()
+    conn.close()
 
-    return jsonify({"status": "success"}), 200
+    return jsonify({"message": "Donation validated"}), 200
 
 
 # ---------------- GALLERY / IMAGES ----------------
@@ -274,18 +314,7 @@ def serve_gallery_image(filename):
 
 
 # ---------------- ADMIN / EXPORT (paid users) ----------------
-@app.route('/paid-users', methods=['GET'])
-def paid_users():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT fullname, phone, amount, reference, status FROM donations WHERE status='paid'")
-    rows = c.fetchall()
-    conn.close()
-    result = []
-    for r in rows:
-        result.append({'fullname': r[0], 'phone': r[1], 'amount': r[2], 'reference': r[3], 'status': r[4]})
-    return jsonify(result)
-
+# Note: `paid_users` endpoint is defined above including `proof_filename` in the response.
 
 @app.route('/download-csv', methods=['GET'])
 def download_csv():

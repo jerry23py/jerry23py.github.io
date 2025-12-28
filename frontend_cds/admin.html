@@ -59,6 +59,21 @@
 
     <a id="downloadBtn" href="#">Download CSV</a>
 
+    <h3 style="margin-top:20px">Pending Donations</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Amount (NGN)</th>
+                <th>Proof</th>
+                <th>Reference</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="pendingTable"></tbody>
+    </table>
+
     <h3 style="margin-top:20px">Upload Gallery Image</h3>
     <h4 style="margin-top:8px">Upload Album</h4>
     <form id="uploadForm" enctype="multipart/form-data">
@@ -98,8 +113,9 @@ function authenticate() {
     const loginError = document.getElementById("loginError");
 
     if (passwordInput === ADMIN_PASSWORD) {
-        // Store authentication in session (cleared when browser closes)
+        // Store authentication and the admin key in session (cleared when browser closes)
         sessionStorage.setItem("adminAuth", "true");
+        sessionStorage.setItem("adminPassword", passwordInput);
         showAdminPanel();
     } else {
         loginError.innerText = "Incorrect password. Try again.";
@@ -108,6 +124,7 @@ function authenticate() {
 
 function logout() {
     sessionStorage.removeItem("adminAuth");
+    sessionStorage.removeItem("adminPassword");
     document.getElementById("loginBox").style.display = "block";
     document.getElementById("adminContent").style.display = "none";
     document.getElementById("passwordInput").value = "";
@@ -116,6 +133,7 @@ function logout() {
 function showAdminPanel() {
     document.getElementById("loginBox").style.display = "none";
     document.getElementById("adminContent").style.display = "block";
+    loadPendingDonations();
     loadPaidMembers();
 }
 
@@ -136,6 +154,7 @@ function loadPaidMembers() {
         })
         .then(data => {
             const table = document.getElementById("paidTable");
+            table.innerHTML = '';
             if (!data || data.length === 0) {
                 table.innerHTML = '<tr><td colspan="3" style="text-align:center;">No paid members found.</td></tr>';
                 return;
@@ -159,6 +178,59 @@ function loadPaidMembers() {
             const errorDiv = document.getElementById("errorMsg");
             errorDiv.innerText = `Error loading data: ${err.message}. Ensure the backend API is running at ${API_URL}`;
         });
+}
+
+// ------------------- PENDING DONATIONS -------------------
+function loadPendingDonations() {
+    const key = sessionStorage.getItem('adminPassword') || ADMIN_PASSWORD;
+    fetch(`${API_URL}/pending-donations`, { headers: { 'X-ADMIN-KEY': key } })
+        .then(res => {
+            if (!res.ok) throw new Error(`Server error: ${res.status}`);
+            return res.json();
+        })
+        .then(data => {
+            const table = document.getElementById('pendingTable');
+            table.innerHTML = '';
+            if (!data || data.length === 0) {
+                table.innerHTML = '<tr><td colspan="5" style="text-align:center;">No pending donations.</td></tr>';
+                return;
+            }
+            data.forEach(d => {
+                const proofCell = d.proof_filename ? `<a href="${API_URL}/gallery-image/${d.proof_filename}" target="_blank">View</a>` : '—';
+                table.innerHTML += `
+                    <tr>
+                        <td>${d.fullname}</td>
+                        <td>${d.phone}</td>
+                        <td>₦${d.amount}</td>
+                        <td>${proofCell}</td>
+                        <td>${d.reference}</td>
+                        <td><button onclick="validateDonation('${d.reference}')">Mark Paid</button></td>
+                    </tr>
+                `;
+            });
+        })
+        .catch(err => {
+            const errorDiv = document.getElementById("errorMsg");
+            errorDiv.innerText = `Error loading pending donations: ${err.message}.`;
+        });
+}
+
+function validateDonation(reference) {
+    const key = sessionStorage.getItem('adminPassword') || ADMIN_PASSWORD;
+    fetch(`${API_URL}/admin/validate-donation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-ADMIN-KEY': key },
+        body: JSON.stringify({ reference })
+    }).then(res => {
+        if (!res.ok) return res.text().then(t => { throw new Error(t || res.status); });
+        return res.json();
+    }).then(() => {
+        loadPendingDonations();
+        loadPaidMembers();
+    }).catch(err => {
+        const errorDiv = document.getElementById("errorMsg");
+        errorDiv.innerText = `Error validating donation: ${err.message}`;
+    });
 }
 
 // ----------------- IMAGE UPLOAD -----------------

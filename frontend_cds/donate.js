@@ -7,21 +7,25 @@ if (form) {
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
 
-        const data = {
-            fullname: document.getElementById("fullname").value,
-            email: document.getElementById("email").value,
-            phone: document.getElementById("phone").value,
-            amount: document.getElementById("amount").value
-        };
-
         const statusEl = document.getElementById("status");
         if (statusEl) statusEl.innerText = "Processing...";
+
+        const fd = new FormData();
+        fd.append('fullname', document.getElementById("fullname").value);
+        fd.append('email', document.getElementById("email").value);
+        fd.append('phone', document.getElementById("phone").value);
+        fd.append('amount', document.getElementById("amount").value);
+        const proofFile = document.getElementById('proof').files[0];
+        if (!proofFile) {
+            if (statusEl) statusEl.innerText = 'Please attach a proof of payment file.';
+            return;
+        }
+        fd.append('proof', proofFile);
 
         try {
             const resp = await fetch(`${BACKEND_URL}/donate`, {
                 method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify(data)
+                body: fd
             });
 
             if (!resp.ok) {
@@ -31,9 +35,10 @@ if (form) {
             }
 
             const result = await resp.json();
-            if (result.payment_url) {
-                if (statusEl) statusEl.innerText = "Redirecting to payment provider...";
-                window.location.href = result.payment_url;
+            if (result.reference) {
+                if (statusEl) statusEl.innerText = `Donation recorded. Reference: ${result.reference}. ${result.message || ''}`;
+                // Optionally show instructions or copy reference to clipboard
+                try { navigator.clipboard?.writeText(result.reference); } catch (e) {}
             } else {
                 if (statusEl) statusEl.innerText = "Error: " + (result.message || 'Unknown error');
             }
