@@ -68,6 +68,7 @@
                 <th>Phone</th>
                 <th>Amount (NGN)</th>
                 <th>Proof</th>
+                <th>Bank Acc</th>
                 <th>Reference</th>
                 <th>Approved By</th>
                 <th>Approved At</th>
@@ -89,6 +90,20 @@
         <button type="button" onclick="uploadImage()" style="margin-top:8px">Upload Album</button>
         <div id="uploadStatus" style="margin-top:8px"></div>
     </form>
+
+    <h3 style="margin-top:20px">Manage Bank Accounts</h3>
+    <form id="bankForm" onsubmit="event.preventDefault(); addBankAccount();">
+        <label>Bank Name</label>
+        <input type="text" id="bank_name" placeholder="e.g., First Bank" style="width:100%;max-width:400px; padding:8px" required>
+        <label>Account Name</label>
+        <input type="text" id="account_name" placeholder="Account holder name" style="width:100%;max-width:400px; padding:8px" required>
+        <label>Account Number</label>
+        <input type="text" id="account_number" placeholder="e.g., 0123456789" style="width:100%;max-width:400px; padding:8px" required>
+        <label>Type</label>
+        <input type="text" id="bank_type" placeholder="Savings / Current (optional)" style="width:100%;max-width:400px; padding:8px">
+        <button type="submit" style="margin-top:8px">Add / Update Account</button>
+    </form>
+    <div id="bankList" style="margin-top:12px"></div>
 
     <table>
         <thead>
@@ -142,6 +157,7 @@ function showAdminPanel() {
     document.getElementById("adminContent").style.display = "block";
     loadPendingDonations();
     loadPaidMembers();
+    loadBankAccounts();
 }
 
 // Check if user is already authenticated (from previous session in same tab)
@@ -212,6 +228,7 @@ function loadPendingDonations() {
                         <td>${d.phone}</td>
                         <td>₦${d.amount}</td>
                         <td>${proofCell}</td>
+                        <td>${d.bank_account_id || '—'}</td>
                         <td>${d.reference}</td>
                         <td>${d.approved_by || '—'}</td>
                         <td>${d.approved_at || '—'}</td>
@@ -305,11 +322,76 @@ function resetDonations() {
             alert(`Reset complete. deleted_rows: ${j.deleted_rows || 0}, deleted_files: ${j.deleted_files || 0}`);
             loadPendingDonations();
             loadPaidMembers();
+            loadBankAccounts();
         }).catch(err => {
             alert('Reset failed: ' + err.message);
         }).finally(() => {
             btn.disabled = false; btn.innerText = 'Reset Donations DB';
         });
+}
+
+// ----------------- BANK ACCOUNTS (ADMIN) -----------------
+async function loadBankAccounts() {
+    const token = sessionStorage.getItem('adminToken');
+    const listEl = document.getElementById('bankList');
+    listEl.innerText = 'Loading...';
+    if (!token) { listEl.innerText = 'Not authenticated'; return; }
+    try {
+        const resp = await fetch(`${API_URL}/admin/bank-accounts`, { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!resp.ok) throw new Error('Failed to load');
+        const data = await resp.json();
+        if (!data || data.length === 0) { listEl.innerHTML = '<em>No bank accounts configured.</em>'; return; }
+        listEl.innerHTML = data.map(a => `
+            <div style="padding:8px;border:1px solid #eee;margin-bottom:8px;border-radius:6px;">
+                <strong>${a.bank_name}</strong> — ${a.account_name} — ${a.account_number} ${a.bank_type? '('+a.bank_type+')':''}
+                <div style="margin-top:8px;">
+                    <button onclick="deleteBank(${a.id})" style="background:#ff6b6b;color:white;border:none;padding:6px 10px;border-radius:6px;">Delete</button>
+                    <button onclick="toggleActive(${a.id}, ${a.active ? 0 : 1})" style="margin-left:8px;">${a.active ? 'Disable' : 'Enable'}</button>
+                </div>
+            </div>`).join('\n');
+    } catch (err) {
+        listEl.innerText = 'Error loading bank accounts: ' + err.message;
+    }
+}
+
+async function addBankAccount() {
+    const token = sessionStorage.getItem('adminToken');
+    if (!token) { alert('Not authenticated'); return; }
+    const bank_name = document.getElementById('bank_name').value.trim();
+    const account_name = document.getElementById('account_name').value.trim();
+    const account_number = document.getElementById('account_number').value.trim();
+    const bank_type = document.getElementById('bank_type').value.trim();
+    if (!bank_name || !account_name || !account_number) { alert('All required fields'); return; }
+    try {
+        const resp = await fetch(`${API_URL}/admin/bank-accounts`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ bank_name, account_name, account_number, bank_type }) });
+        if (!resp.ok) throw new Error('Failed to add');
+        document.getElementById('bank_name').value = '';
+        document.getElementById('account_name').value = '';
+        document.getElementById('account_number').value = '';
+        document.getElementById('bank_type').value = '';
+        loadBankAccounts();
+    } catch (err) { alert('Add failed: ' + err.message); }
+}
+
+async function deleteBank(id) {
+    if (!confirm('Delete this bank account?')) return;
+    const token = sessionStorage.getItem('adminToken');
+    if (!token) { alert('Not authenticated'); return; }
+    try {
+        const resp = await fetch(`${API_URL}/admin/bank-accounts/${id}`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
+        if (!resp.ok) throw new Error('Delete failed');
+        loadBankAccounts();
+    } catch (err) { alert(err.message); }
+}
+
+async function toggleActive(id, activeValue) {
+    const token = sessionStorage.getItem('adminToken');
+    if (!token) { alert('Not authenticated'); return; }
+    try {
+        const resp = await fetch(`${API_URL}/admin/bank-accounts/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ active: !!activeValue }) });
+        if (!resp.ok) throw new Error('Update failed');
+        loadBankAccounts();
+    } catch (err) { alert(err.message); }
 }
 </script>
 
