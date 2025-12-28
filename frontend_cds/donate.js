@@ -54,10 +54,38 @@ if (form) {
                 showLoading('Error');
                 setTimeout(() => { hideLoading(); }, 1500);
             }
+
+        } catch (err) {
+            if (statusEl) statusEl.innerText = "Network error: " + err.message;
+            hideLoading();
+        }
+    });
+}
         } catch (err) {
             if (statusEl) statusEl.innerText = "Network error: " + err.message;
         }
     });
 } else {
     console.warn('donationForm not found on page');
+}
+
+// ------------------ CHECK STATUS ------------------
+async function checkStatus() {
+    const ref = document.getElementById('checkRef').value.trim();
+    const statusResult = document.getElementById('statusResult');
+    if (!ref) { statusResult.innerText = 'Enter a reference to check status'; return; }
+    try {
+        statusResult.innerText = 'Checking...';
+        const resp = await fetch(`${BACKEND_URL}/donation-status/${encodeURIComponent(ref)}`);
+        if (!resp.ok) { statusResult.innerText = 'Not found or server error'; return; }
+        const data = await resp.json();
+        let text = `Status: ${data.status}`;
+        if (data.status === 'paid') {
+            text += `\nApproved by: ${data.approved_by || 'admin'}`;
+            if (data.approved_at) text += ` at ${data.approved_at}`;
+        }
+        statusResult.innerText = text;
+    } catch (err) {
+        statusResult.innerText = 'Network error: ' + err.message;
+    }
 }

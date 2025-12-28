@@ -97,7 +97,7 @@
       <input type="email" id="email" required />
       <label>Phone</label>
       <input type="tel" id="phone" />
-
+      
       <label>Amount (NGN)</label>
       <input type="number" id="amount" required />
 
@@ -108,6 +108,14 @@
 
       <button type="submit">Pay Now</button>
     </form>
+
+    <hr style="margin-top:20px">
+
+    <h3>Check Donation Status</h3>
+    <label>Reference</label>
+    <input type="text" id="checkRef" placeholder="Enter your donation reference" />
+    <button id="checkStatusBtn" onclick="checkStatus()">Check Status</button>
+    <div id="statusResult" style="margin-top:12px;color:#333"></div>
   </div>
 
   <!-- Simple loading modal -->
