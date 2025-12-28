@@ -271,17 +271,19 @@ conn.close()
 
 # Ensure SQLAlchemy models map to the actual table names found on disk (helps when DB has legacy plural tables)
 try:
-    if hasattr(Donation, '__table__') and Donation.__table__.name != DONATION_TABLE:
-        Donation.__table__.name = DONATION_TABLE
-    if hasattr(Image, '__table__') and Image.__table__.name != IMAGE_TABLE:
-        Image.__table__.name = IMAGE_TABLE
-    # Set bank account table name if present
-    if hasattr(BankAccount, '__table__') and BankAccount.__table__.name != BANK_ACCOUNT_TABLE:
-        BankAccount.__table__.name = BANK_ACCOUNT_TABLE
+    # run inside app context to avoid 'working outside of application context' warnings
+    with app.app_context():
+        if hasattr(Donation, '__table__') and Donation.__table__.name != DONATION_TABLE:
+            Donation.__table__.name = DONATION_TABLE
+        if hasattr(Image, '__table__') and Image.__table__.name != IMAGE_TABLE:
+            Image.__table__.name = IMAGE_TABLE
+        # Set bank account table name if present
+        if hasattr(BankAccount, '__table__') and BankAccount.__table__.name != BANK_ACCOUNT_TABLE:
+            BankAccount.__table__.name = BANK_ACCOUNT_TABLE
 
-    # reflect updated names
-    db.metadata.clear()
-    db.reflect(bind=db.engine)
+        # reflect updated names
+        db.metadata.clear()
+        db.reflect(bind=db.engine)
 except Exception as e:
     app.logger.warning(f"Failed to remap SQLAlchemy tables: {e}")
 
@@ -693,40 +695,7 @@ def admin_debug_db():
         return jsonify({"message": "Debug query failed", "error": str(e)}), 500
 
 
-# Admin-only debug endpoint to echo incoming request details (method, path, headers, args, body)
-@app.route('/admin/_debug-request', methods=['GET','POST','PUT','DELETE','PATCH','OPTIONS'])
-def admin_debug_request():
-    if not is_admin_authorized(request):
-        return jsonify({"message": "Unauthorized"}), 401
-    try:
-        info = {
-            "method": request.method,
-            "path": request.path,
-            "full_path": request.full_path,
-            "args": request.args.to_dict(flat=False),
-            "headers": {k: v for k, v in request.headers.items()},
-        }
-        # capture body if available
-        body = None
-        try:
-            if request.is_json:
-                body = request.get_json(silent=True)
-            else:
-                # form-encoded or raw text
-                body = request.get_data(as_text=True)
-                # include parsed form fields if any
-                if request.form and len(request.form) > 0:
-                    body = {"raw": body, "form": request.form.to_dict(flat=False)}
-        except Exception as e:
-            body = f"Failed to parse body: {e}"
-        info['body'] = body
-        # include a minimal environ snapshot
-        info['environ'] = {k: request.environ.get(k) for k in ('REMOTE_ADDR','REMOTE_PORT','SERVER_NAME','SERVER_PORT')}
-        app.logger.info(f"Admin debug request: {info['method']} {info['path']} headers={list(info['headers'].keys())}")
-        return jsonify(info), 200
-    except Exception as e:
-        app.logger.error(f"Request debug failed: {e}")
-        return jsonify({"message": "Request debug failed", "error": str(e)}), 500
+
 
 
 # ---------------- GALLERY / IMAGES ----------------

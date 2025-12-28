@@ -78,7 +78,7 @@ if (form) {
         if (!resp.ok) { container.innerText = 'Unable to fetch bank transfer details.'; return; }
         const accounts = await resp.json();
         if (!accounts || accounts.length === 0) { container.innerText = 'No bank transfer details available at the moment.'; return; }
-        container.innerHTML = '<strong>Bank Transfer Details</strong><div style="margin-top:6px;">' + accounts.map(a => `\n            <label style="display:block;padding:8px;border:1px solid #eee;border-radius:8px;margin-top:6px;">\n                <input type="radio" name="bank_account_id" value="${a.id}" style="margin-right:8px"> <strong>${a.bank_name}</strong> — ${a.account_name} — ${a.account_number} ${a.bank_type? '('+a.bank_type+')':''}\n            </label>`).join('\n') + '</div>';
+        container.innerHTML = '<strong>Bank Transfer Details</strong><div style="margin-top:6px;">' + accounts.map(a => `\n            <label style="display:block;padding:8px;border:1px solid #eee;border-radius:8px;margin-top:6px;">\n                <input type="radio" name="bank_account_id" value="${a.id}" style="margin-right:8px"> <strong>${a.bank_name}</strong> — ${a.account_name} — ${a.account_number ? '****'+a.account_number.slice(-4) : ''} ${a.bank_type? '('+a.bank_type+')':''}\n            </label>`).join('\n') + '</div>';
     } catch (err) {
         container.innerText = 'Error loading bank accounts: ' + err.message;
     }
