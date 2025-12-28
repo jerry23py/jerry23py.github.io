@@ -205,6 +205,14 @@ def create_table():
 
 create_table()
 
+# Log each incoming request briefly to help diagnose 405s (kept lightweight)
+@app.before_request
+def log_request_info():
+    try:
+        app.logger.info(f"Incoming request: method={request.method} path={request.path} origin={request.headers.get('Origin')} content-type={request.headers.get('Content-Type')}")
+    except Exception:
+        pass
+
 # Determine the actual table names used on disk (support legacy plural table names)
 conn = sqlite3.connect(DB_PATH)
 c = conn.cursor()
@@ -484,7 +492,9 @@ def admin_reset_donations():
 
 
 # ---------------- ADMIN: BANK ACCOUNTS ----------------
+# Accept both trailing and non-trailing slash for preflight and POST to avoid 405s from mismatched URLs
 @app.route('/admin/bank-accounts', methods=['OPTIONS'])
+@app.route('/admin/bank-accounts/', methods=['OPTIONS'])
 def admin_bank_accounts_options():
     # Explicit OPTIONS for CORS preflight from browsers
     resp = app.make_response(('', 204))
@@ -495,6 +505,7 @@ def admin_bank_accounts_options():
 
 
 @app.route('/admin/bank-accounts', methods=['POST'])
+@app.route('/admin/bank-accounts/', methods=['POST'])
 def admin_add_bank_account():
     app.logger.info(f"admin_add_bank_account called: method={request.method} path={request.path} headers={[k for k in request.headers.keys()]}")
     if not is_admin_authorized(request):
@@ -554,6 +565,7 @@ def admin_list_bank_accounts():
 
 
 @app.route('/admin/bank-accounts/<int:acc_id>', methods=['OPTIONS'])
+@app.route('/admin/bank-accounts/<int:acc_id>/', methods=['OPTIONS'])
 def admin_bank_account_item_options(acc_id):
     resp = app.make_response(('', 204))
     resp.headers['Access-Control-Allow-Origin'] = '*'
@@ -563,6 +575,7 @@ def admin_bank_account_item_options(acc_id):
 
 
 @app.route('/admin/bank-accounts/<int:acc_id>', methods=['PUT'])
+@app.route('/admin/bank-accounts/<int:acc_id>/', methods=['PUT'])
 def admin_update_bank_account(acc_id):
     app.logger.info(f"admin_update_bank_account called: method={request.method} path={request.path} headers={[k for k in request.headers.keys()]}")
     if not is_admin_authorized(request):
@@ -623,6 +636,7 @@ def admin_delete_bank_account(acc_id):
 
 # Public endpoint for active bank accounts (used by donation form)
 @app.route('/bank-accounts', methods=['GET'])
+@app.route('/bank-accounts/', methods=['GET'])
 def list_bank_accounts():
     try:
         conn = sqlite3.connect(DB_PATH)
