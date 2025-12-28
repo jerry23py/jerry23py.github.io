@@ -18,7 +18,8 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(os.path.join(basedir, '.env'))
 
 app = Flask(__name__)
-CORS(app)  # allows frontend to call API
+# Allow CORS for admin routes and public endpoints. Ensure Authorization header is allowed for preflight.
+CORS(app, resources={r"/admin/*": {"origins": "*"}, r"/bank-accounts": {"origins": "*"}, r"/bank-accounts/": {"origins": "*"}}, expose_headers=['Content-Type'], supports_credentials=True)  # allows frontend to call API and include Authorization header
 
 # Database setup
 app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.environ.get('DONATIONS_DB', 'donations.db')}"
@@ -490,19 +491,12 @@ def admin_reset_donations():
 
     return jsonify({"message": "Donations reset", "deleted_files": deleted_files, "deleted_rows": deleted}), 200
 
-
-# ---------------- ADMIN: BANK ACCOUNTS (combined GET/POST/OPTIONS)
 @app.route('/admin/bank-accounts', methods=['GET','POST','OPTIONS'])
 @app.route('/admin/bank-accounts/', methods=['GET','POST','OPTIONS'])
 def admin_bank_accounts():
-    app.logger.info(f"admin_bank_accounts called: method={request.method} path={request.path} origin={request.headers.get('Origin')}")
-    # OPTIONS - CORS preflight
     if request.method == 'OPTIONS':
-        resp = app.make_response(('', 204))
-        resp.headers['Access-Control-Allow-Origin'] = '*'
-        resp.headers['Access-Control-Allow-Methods'] = 'GET,POST,OPTIONS'
-        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
-        return resp
+        return '', 204
+    ...
 
     # GET - list accounts (admin-only)
     if request.method == 'GET':
@@ -518,16 +512,21 @@ def admin_bank_accounts():
             accounts.append({"id": r[0], "bank_name": r[1], "account_name": r[2], "account_number": r[3], "bank_type": r[4], "active": bool(r[5]), "created_at": r[6]})
         return jsonify(accounts)
 
-    # POST - create new account (accept JSON or form-encoded)
+    # POST - create new account (accept JSON or form-encoded). Token may be sent in query (?token=) or Authorization header.
     if request.method == 'POST':
-        if not is_admin_authorized(request):
+        # Accept token in query string for browser friendly calls
+        token_q = request.args.get('token')
+        if token_q and verify_admin_token(token_q):
+            authorized = True
+        else:
+            authorized = is_admin_authorized(request)
+        if not authorized:
             return jsonify({"message": "Unauthorized"}), 401
         # Accept JSON or form body
         data = {}
         if request.is_json:
             data = request.get_json() or {}
         else:
-            # form-encoded submitted by browser
             data = request.form.to_dict()
         bank_name = (data.get('bank_name') or '').strip()
         account_name = (data.get('account_name') or '').strip()
@@ -566,50 +565,84 @@ def admin_bank_accounts():
             return jsonify({"message": "Failed to add", "error": str(e)}), 500
 
 
-@app.route('/admin/bank-accounts/<int:acc_id>', methods=['OPTIONS'])
-@app.route('/admin/bank-accounts/<int:acc_id>/', methods=['OPTIONS'])
-def admin_bank_account_item_options(acc_id):
+
+
+@app.route('/admin/bank-accounts', methods=['OPTIONS'])
+@app.route('/admin/bank-accounts/', methods=['OPTIONS'])
+def admin_bank_accounts_options():
     resp = app.make_response(('', 204))
     resp.headers['Access-Control-Allow-Origin'] = '*'
-    resp.headers['Access-Control-Allow-Methods'] = 'PUT,DELETE,OPTIONS'
+    resp.headers['Access-Control-Allow-Methods'] = 'GET,POST,OPTIONS'
     resp.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
     return resp
 
-
-@app.route('/admin/bank-accounts/<int:acc_id>', methods=['PUT'])
-@app.route('/admin/bank-accounts/<int:acc_id>/', methods=['PUT'])
-def admin_update_bank_account(acc_id):
-    app.logger.info(f"admin_update_bank_account called: method={request.method} path={request.path} headers={[k for k in request.headers.keys()]}")
-    if not is_admin_authorized(request):
+@app.route('/admin/bank-accounts/<int:acc_id>', methods=['PUT','DELETE'])
+@app.route('/admin/bank-accounts/<int:acc_id>/', methods=['PUT','DELETE'])
+def admin_bank_account_item(acc_id):
+    app.logger.info(f"admin_bank_account_item called: method={request.method} path={request.path} origin={request.headers.get('Origin')}")
+    # Accept token in query string or Authorization header
+    token_q = request.args.get('token')
+    if token_q and verify_admin_token(token_q):
+        authorized = True
+    else:
+        authorized = is_admin_authorized(request)
+    if not authorized:
         return jsonify({"message": "Unauthorized"}), 401
-    data = request.get_json() or {}
-    fields = []
-    params = []
-    for k in ['bank_name', 'account_name', 'account_number', 'bank_type']:
-        if k in data:
-            fields.append(f"{k} = ?")
-            params.append(data[k])
-    if 'active' in data:
-        fields.append("active = ?")
-        params.append(1 if data['active'] else 0)
-    if not fields:
-        return jsonify({"message": "No fields to update"}), 400
-    params.append(acc_id)
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute(f"UPDATE {BANK_ACCOUNT_TABLE} SET {', '.join(fields)} WHERE id = ?", params)
-        conn.commit()
-        conn.close()
-        return jsonify({"message": "Updated"}), 200
-    except Exception as e:
-        app.logger.error(f"Failed to update bank account {acc_id}: {e}")
+
+    if request.method == 'DELETE':
         try:
-            conn.rollback()
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute(f"DELETE FROM {BANK_ACCOUNT_TABLE} WHERE id = ?", (acc_id,))
+            deleted = c.rowcount
+            conn.commit()
             conn.close()
-        except Exception:
-            pass
-        return jsonify({"message": "Failed to update", "error": str(e)}), 500
+            if deleted == 0:
+                return jsonify({"message": "Not found"}), 404
+            return jsonify({"message": "Deleted"}), 200
+        except Exception as e:
+            app.logger.error(f"Failed to delete bank account {acc_id}: {e}")
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
+            return jsonify({"message": "Failed to delete", "error": str(e)}), 500
+
+    # PUT - update
+    if request.method == 'PUT':
+        data = {}
+        if request.is_json:
+            data = request.get_json() or {}
+        else:
+            data = request.form.to_dict()
+        fields = []
+        params = []
+        for k in ['bank_name', 'account_name', 'account_number', 'bank_type']:
+            if k in data:
+                fields.append(f"{k} = ?")
+                params.append(data[k])
+        if 'active' in data:
+            fields.append("active = ?")
+            params.append(1 if str(data['active']).lower() in ['1','true','yes'] else 0)
+        if not fields:
+            return jsonify({"message": "No fields to update"}), 400
+        params.append(acc_id)
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute(f"UPDATE {BANK_ACCOUNT_TABLE} SET {', '.join(fields)} WHERE id = ?", params)
+            conn.commit()
+            conn.close()
+            return jsonify({"message": "Updated"}), 200
+        except Exception as e:
+            app.logger.error(f"Failed to update bank account {acc_id}: {e}")
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
+            return jsonify({"message": "Failed to update", "error": str(e)}), 500
 
 
 @app.route('/admin/bank-accounts/<int:acc_id>', methods=['DELETE'])
