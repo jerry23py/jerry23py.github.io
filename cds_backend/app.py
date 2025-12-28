@@ -19,7 +19,7 @@ load_dotenv(os.path.join(basedir, '.env'))
 
 app = Flask(__name__)
 # Allow CORS for admin routes and public endpoints. Ensure Authorization header is allowed for preflight.
-CORS(app, resources={r"/admin/*": {"origins": "*"}, r"/bank-accounts": {"origins": "*"}, r"/bank-accounts/": {"origins": "*"}}, expose_headers=['Content-Type'], supports_credentials=True)  # allows frontend to call API and include Authorization header
+CORS(app, resources={r"/admin/*": {"origins": "*"}, r"/bank-accounts": {"origins": "*"}, r"/bank-accounts/": {"origins": "*"}}, expose_headers=['Content-Type'], supports_credentials=True, allow_headers=['Content-Type','Authorization','X-ADMIN-KEY','X-ADMIN-NAME'])  # allows frontend to call API and include Authorization header
 
 # Database setup
 app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.environ.get('DONATIONS_DB', 'donations.db')}"
@@ -355,9 +355,9 @@ def donation_status(reference):
     c = conn.cursor()
     c.execute(f"SELECT fullname, amount, status, reference, approved_by, approved_at, bank_account_id FROM {DONATION_TABLE} WHERE reference=?", (reference,))
     row = c.fetchone()
-    conn.close()
 
     if not row:
+        conn.close()
         return jsonify({"message": "Reference not found"}), 404
 
     # bank_account_id (nullable)
@@ -365,13 +365,17 @@ def donation_status(reference):
     bank_account = None
     if bank_account_id:
         try:
-            c2 = conn.cursor()
+            # use a fresh connection for the bank account lookup to avoid reusing closed cursor
+            c2_conn = sqlite3.connect(DB_PATH)
+            c2 = c2_conn.cursor()
             c2.execute(f"SELECT id, bank_name, account_name, account_number, bank_type FROM {BANK_ACCOUNT_TABLE} WHERE id=?", (bank_account_id,))
             br = c2.fetchone()
             if br:
                 bank_account = {"id": br[0], "bank_name": br[1], "account_name": br[2], "account_number": br[3], "bank_type": br[4]}
+            c2_conn.close()
         except Exception:
             bank_account = None
+    conn.close()
 
     return jsonify({
         "fullname": row[0],
@@ -495,8 +499,13 @@ def admin_reset_donations():
 @app.route('/admin/bank-accounts/', methods=['GET','POST','OPTIONS'])
 def admin_bank_accounts():
     if request.method == 'OPTIONS':
-        return '', 204
-    ...
+        resp = app.make_response(('', 204))
+        # Explicit CORS preflight headers for compatibility with strict clients
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'GET,POST,OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-ADMIN-KEY,X-ADMIN-NAME'
+        resp.headers['Access-Control-Allow-Credentials'] = 'true'
+        return resp
 
     # GET - list accounts (admin-only)
     if request.method == 'GET':
@@ -567,14 +576,7 @@ def admin_bank_accounts():
 
 
 
-@app.route('/admin/bank-accounts', methods=['OPTIONS'])
-@app.route('/admin/bank-accounts/', methods=['OPTIONS'])
-def admin_bank_accounts_options():
-    resp = app.make_response(('', 204))
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    resp.headers['Access-Control-Allow-Methods'] = 'GET,POST,OPTIONS'
-    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
-    return resp
+
 
 @app.route('/admin/bank-accounts/<int:acc_id>', methods=['PUT','DELETE'])
 @app.route('/admin/bank-accounts/<int:acc_id>/', methods=['PUT','DELETE'])
@@ -645,28 +647,7 @@ def admin_bank_account_item(acc_id):
             return jsonify({"message": "Failed to update", "error": str(e)}), 500
 
 
-@app.route('/admin/bank-accounts/<int:acc_id>', methods=['DELETE'])
-def admin_delete_bank_account(acc_id):
-    if not is_admin_authorized(request):
-        return jsonify({"message": "Unauthorized"}), 401
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute(f"DELETE FROM {BANK_ACCOUNT_TABLE} WHERE id = ?", (acc_id,))
-        deleted = c.rowcount
-        conn.commit()
-        conn.close()
-        if deleted == 0:
-            return jsonify({"message": "Not found"}), 404
-        return jsonify({"message": "Deleted"}), 200
-    except Exception as e:
-        app.logger.error(f"Failed to delete bank account {acc_id}: {e}")
-        try:
-            conn.rollback()
-            conn.close()
-        except Exception:
-            pass
-        return jsonify({"message": "Failed to delete", "error": str(e)}), 500
+
 
 
 # Public endpoint for active bank accounts (used by donation form)
@@ -710,6 +691,42 @@ def admin_debug_db():
     except Exception as e:
         app.logger.error(f"Debug endpoint failed: {e}")
         return jsonify({"message": "Debug query failed", "error": str(e)}), 500
+
+
+# Admin-only debug endpoint to echo incoming request details (method, path, headers, args, body)
+@app.route('/admin/_debug-request', methods=['GET','POST','PUT','DELETE','PATCH','OPTIONS'])
+def admin_debug_request():
+    if not is_admin_authorized(request):
+        return jsonify({"message": "Unauthorized"}), 401
+    try:
+        info = {
+            "method": request.method,
+            "path": request.path,
+            "full_path": request.full_path,
+            "args": request.args.to_dict(flat=False),
+            "headers": {k: v for k, v in request.headers.items()},
+        }
+        # capture body if available
+        body = None
+        try:
+            if request.is_json:
+                body = request.get_json(silent=True)
+            else:
+                # form-encoded or raw text
+                body = request.get_data(as_text=True)
+                # include parsed form fields if any
+                if request.form and len(request.form) > 0:
+                    body = {"raw": body, "form": request.form.to_dict(flat=False)}
+        except Exception as e:
+            body = f"Failed to parse body: {e}"
+        info['body'] = body
+        # include a minimal environ snapshot
+        info['environ'] = {k: request.environ.get(k) for k in ('REMOTE_ADDR','REMOTE_PORT','SERVER_NAME','SERVER_PORT')}
+        app.logger.info(f"Admin debug request: {info['method']} {info['path']} headers={list(info['headers'].keys())}")
+        return jsonify(info), 200
+    except Exception as e:
+        app.logger.error(f"Request debug failed: {e}")
+        return jsonify({"message": "Request debug failed", "error": str(e)}), 500
 
 
 # ---------------- GALLERY / IMAGES ----------------
