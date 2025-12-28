@@ -35,6 +35,8 @@ class Donation(db.Model):
     reference = db.Column(db.String(50), unique=True, nullable=False)
     status = db.Column(db.String(20), default="pending")
     proof_filename = db.Column(db.String(255), nullable=True)
+    approved_by = db.Column(db.String(100), nullable=True)
+    approved_at = db.Column(db.String(50), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -72,9 +74,12 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # serializer for admin tokens
 _token_serializer = Serializer(SECRET_KEY, salt='admin-token')
 
-def generate_admin_token():
+def generate_admin_token(name=None):
     # URLSafeTimedSerializer.dumps returns a string
-    return _token_serializer.dumps({"role": "admin"})
+    payload = {"role": "admin"}
+    if name:
+        payload['name'] = name
+    return _token_serializer.dumps(payload)
 
 
 def verify_admin_token(token):
@@ -107,38 +112,109 @@ def allowed_file(filename):
 # -------- DATABASE SETUP ----------
 # Ensure donations table has a column for proof_filename (filename of uploaded receipt)
 def create_table():
+    # Ensure existing DB (created by SQLAlchemy) has the new columns we need.
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS donations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fullname TEXT,
-            phone TEXT,
-            amount INTEGER,
-            reference TEXT,
-            status TEXT DEFAULT 'pending',
-            proof_filename TEXT
-        )
-    """)
-    # If the column didn't exist in older DBs, add it
-    c.execute("PRAGMA table_info(donations)")
-    cols = [r[1] for r in c.fetchall()]
-    if 'proof_filename' not in cols:
-        c.execute("ALTER TABLE donations ADD COLUMN proof_filename TEXT")
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS images (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            filename TEXT,
-            title TEXT,
-            taken_at TEXT,
-            uploaded_at TEXT
-        )
-    """)
+    # For compatibility, check the SQLAlchemy table name 'donation'
+    c.execute("PRAGMA table_info(donation)")
+    cols = [r[1] for r in c.fetchall()]
+    # Some older DBs may have used the plural table name 'donations' or 'images'. If so, rename them to the
+    # singular table names used by the current models so our SQL queries keep working.
+    if not cols:
+        c.execute("PRAGMA table_info(donations)")
+        if c.fetchall():
+            # rename legacy plural table to singular
+            c.execute("ALTER TABLE donations RENAME TO donation")
+            c.execute("PRAGMA table_info(donation)")
+            cols = [r[1] for r in c.fetchall()]
+
+    # If the table doesn't exist at all, let SQLAlchemy create tables later (db.create_all was already called above),
+    # otherwise add missing columns
+    if cols:
+        if 'proof_filename' not in cols:
+            c.execute("ALTER TABLE donation ADD COLUMN proof_filename TEXT")
+        if 'approved_by' not in cols:
+            c.execute("ALTER TABLE donation ADD COLUMN approved_by TEXT")
+        if 'approved_at' not in cols:
+            c.execute("ALTER TABLE donation ADD COLUMN approved_at TEXT")
+
+    # Also ensure 'image' table exists (SQLAlchemy uses singular 'image'). Rename legacy 'images' if present.
+    c.execute("PRAGMA table_info(image)")
+    img_cols = c.fetchall()
+    if not img_cols:
+        # check legacy plural
+        c.execute("PRAGMA table_info(images)")
+        if c.fetchall():
+            c.execute("ALTER TABLE images RENAME TO image")
+            c.execute("PRAGMA table_info(image)")
+            img_cols = c.fetchall()
+    if not img_cols:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS image (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT,
+                title TEXT,
+                taken_at TEXT,
+                uploaded_at TEXT
+            )
+        """)
+
     conn.commit()
     conn.close()
 
 create_table()
+
+# Determine the actual table names used on disk (support legacy plural table names)
+conn = sqlite3.connect(DB_PATH)
+c = conn.cursor()
+c.execute("PRAGMA table_info(donation)")
+if c.fetchall():
+    DONATION_TABLE = 'donation'
+else:
+    c.execute("PRAGMA table_info(donations)")
+    if c.fetchall():
+        # Attempt to rename the legacy plural table to the singular name used by models
+        try:
+            c.execute("ALTER TABLE donations RENAME TO donation")
+            conn.commit()
+            DONATION_TABLE = 'donation'
+        except Exception:
+            # If rename fails, fall back to plural name
+            DONATION_TABLE = 'donations'
+    else:
+        # default to singular (will be created by SQLAlchemy later)
+        DONATION_TABLE = 'donation'
+
+c.execute("PRAGMA table_info(image)")
+if c.fetchall():
+    IMAGE_TABLE = 'image'
+else:
+    c.execute("PRAGMA table_info(images)")
+    if c.fetchall():
+        # Attempt rename to singular image table if possible
+        try:
+            c.execute("ALTER TABLE images RENAME TO image")
+            conn.commit()
+            IMAGE_TABLE = 'image'
+        except Exception:
+            IMAGE_TABLE = 'images'
+    else:
+        IMAGE_TABLE = 'image'
+
+conn.close()
+
+# Ensure SQLAlchemy models map to the actual table names found on disk (helps when DB has legacy plural tables)
+try:
+    if hasattr(Donation, '__table__') and Donation.__table__.name != DONATION_TABLE:
+        Donation.__table__.name = DONATION_TABLE
+    if hasattr(Image, '__table__') and Image.__table__.name != IMAGE_TABLE:
+        Image.__table__.name = IMAGE_TABLE
+    # reflect updated names
+    db.metadata.clear()
+    db.reflect(bind=db.engine)
+except Exception as e:
+    app.logger.warning(f"Failed to remap SQLAlchemy tables: {e}")
 
 
 # ---------- DONATION ROUTE -----------
@@ -180,7 +256,7 @@ def donate():
     # save donor as pending with proof filename in DB
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("INSERT INTO donations (fullname, phone, amount, reference, proof_filename, status) VALUES (?, ?, ?, ?, ?, 'pending')",
+    c.execute(f"INSERT INTO {DONATION_TABLE} (fullname, phone, amount, reference, proof_filename, status) VALUES (?, ?, ?, ?, ?, 'pending')",
               (fullname, phone, amount, reference, stored_name))
     conn.commit()
     conn.close()
@@ -198,16 +274,23 @@ def donate():
 # Route to check status
 @app.route("/donation-status/<reference>", methods=["GET"])
 def donation_status(reference):
-    donation = Donation.query.filter_by(reference=reference).first()
+    # Use direct SQL so we are tolerant of legacy/plural table names and schema differences
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(f"SELECT fullname, amount, status, reference, approved_by, approved_at FROM {DONATION_TABLE} WHERE reference=?", (reference,))
+    row = c.fetchone()
+    conn.close()
 
-    if not donation:
+    if not row:
         return jsonify({"message": "Reference not found"}), 404
 
     return jsonify({
-        "fullname": donation.fullname,
-        "amount": donation.amount,
-        "status": donation.status,
-        "reference": donation.reference
+        "fullname": row[0],
+        "amount": row[1],
+        "status": row[2],
+        "reference": row[3],
+        "approved_by": row[4],
+        "approved_at": row[5]
     })
 @app.route("/pending-donations", methods=["GET"])
 def pending_donations():
@@ -217,7 +300,7 @@ def pending_donations():
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT fullname, phone, amount, reference, status, proof_filename FROM donations WHERE status='pending'")
+    c.execute(f"SELECT fullname, phone, amount, reference, status, proof_filename, approved_by, approved_at FROM {DONATION_TABLE} WHERE status='pending'")
     rows = c.fetchall()
     conn.close()
 
@@ -229,12 +312,9 @@ def pending_donations():
 
 @app.route('/paid-users', methods=['GET'])
 def paid_users():
-    # protect this endpoint
-    if not is_admin_authorized(request):
-        return jsonify({"message": "Unauthorized"}), 401
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH)  # public endpoint: list paid donations
     c = conn.cursor()
-    c.execute("SELECT fullname, phone, amount, reference, status, proof_filename FROM donations WHERE status='paid'")
+    c.execute(f"SELECT fullname, phone, amount, reference, status, proof_filename, approved_by, approved_at FROM {DONATION_TABLE} WHERE status='paid'")
     rows = c.fetchall()
     conn.close()
     result = []
@@ -256,11 +336,29 @@ def validate_donation():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     # only update if not already paid
-    c.execute("UPDATE donations SET status='paid' WHERE reference=? AND status!='paid'", (reference,))
+    # determine admin name (if available in token payload or header)
+    admin_name = 'admin'
+    # try header first
+    header_name = request.headers.get('X-ADMIN-NAME')
+    if header_name:
+        admin_name = header_name
+    else:
+        # try token payload
+        auth = request.headers.get('Authorization', '')
+        if auth.startswith('Bearer '):
+            token = auth.split(' ', 1)[1].strip()
+            try:
+                payload = _token_serializer.loads(token, max_age=ADMIN_TOKEN_EXPIRY)
+                admin_name = payload.get('name', admin_name)
+            except Exception:
+                pass
+
+    approved_at = datetime.utcnow().isoformat()
+    c.execute("UPDATE donation SET status='paid', approved_by=?, approved_at=? WHERE reference=? AND status!='paid'", (admin_name, approved_at, reference))
     if c.rowcount == 0:
         # check if the reference exists and is already paid
         c2 = conn.cursor()
-        c2.execute("SELECT status FROM donations WHERE reference=?", (reference,))
+        c2.execute(f"SELECT status FROM {DONATION_TABLE} WHERE reference=?", (reference,))
         row = c2.fetchone()
         conn.close()
         if row and row[0] == 'paid':
@@ -269,7 +367,7 @@ def validate_donation():
     conn.commit()
     conn.close()
 
-    return jsonify({"message": "Donation validated"}), 200
+    return jsonify({"message": "Donation validated", "approved_by": admin_name, "approved_at": approved_at}), 200
 
 
 @app.route('/admin/reset-donations', methods=['POST'])
@@ -279,7 +377,7 @@ def admin_reset_donations():
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT proof_filename FROM donations WHERE proof_filename IS NOT NULL")
+    c.execute(f"SELECT proof_filename FROM {DONATION_TABLE} WHERE proof_filename IS NOT NULL")
     rows = c.fetchall()
     # delete files if exist
     deleted_files = 0
@@ -295,7 +393,7 @@ def admin_reset_donations():
         except Exception as e:
             app.logger.warning(f"Failed to delete proof file {path}: {e}")
 
-    c.execute("DELETE FROM donations")
+    c.execute(f"DELETE FROM {DONATION_TABLE}")
     deleted = c.rowcount
     conn.commit()
     conn.close()
@@ -338,7 +436,7 @@ def upload_image():
         f.save(save_path)
 
         # store record in DB using album metadata
-        c.execute('INSERT INTO images (filename, title, taken_at, uploaded_at) VALUES (?, ?, ?, ?)',
+        c.execute(f'INSERT INTO {IMAGE_TABLE} (filename, title, taken_at, uploaded_at) VALUES (?, ?, ?, ?)',
                   (stored_name, album_title, album_date, datetime.utcnow().isoformat()))
 
         base = flask_request.host_url.rstrip('/')
@@ -362,7 +460,7 @@ def gallery_list():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     # order by taken_at desc (if set) then title
-    c.execute("SELECT id, filename, title, taken_at, uploaded_at FROM images ORDER BY taken_at DESC, title ASC")
+    c.execute(f"SELECT id, filename, title, taken_at, uploaded_at FROM {IMAGE_TABLE} ORDER BY taken_at DESC, title ASC")
     rows = c.fetchall()
     conn.close()
 
@@ -410,9 +508,10 @@ def protected_proof(filename):
 def admin_login():
     data = request.get_json() or {}
     password = data.get('password', '')
+    username = data.get('username', None)
     if password != ADMIN_SECRET:
         return jsonify({'message': 'Unauthorized'}), 401
-    token = generate_admin_token()
+    token = generate_admin_token(name=username)
     return jsonify({'token': token, 'expires_in': ADMIN_TOKEN_EXPIRY}), 200
 
 
@@ -425,7 +524,7 @@ def download_csv():
     from io import StringIO
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT fullname, phone, amount, reference, status FROM donations")
+    c.execute(f"SELECT fullname, phone, amount, reference, status FROM {DONATION_TABLE}")
     rows = c.fetchall()
     conn.close()
 

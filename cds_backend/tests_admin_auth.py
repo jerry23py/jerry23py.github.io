@@ -42,3 +42,17 @@ def test_admin_login_and_protected_routes():
         # access protected proof with token
         r7 = client.get(f'/protected-proof/{proof_name}', query_string={'token': token})
         assert r7.status_code == 200
+
+        # validate donation and ensure approval info is recorded
+        ref = pend[0]['reference']
+        rr = client.post('/admin/validate-donation', headers={'Authorization': f'Bearer {token}'}, json={'reference': ref})
+        assert rr.status_code == 200
+        assert 'approved_by' in rr.get_json()
+
+        # check donation-status shows approval info
+        status = client.get(f'/donation-status/{ref}')
+        assert status.status_code == 200
+        sjson = status.get_json()
+        assert sjson.get('status') == 'paid'
+        assert sjson.get('approved_by') is not None
+
