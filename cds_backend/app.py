@@ -49,6 +49,17 @@ class Image(db.Model):
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+# Bank account model for transfer details (managed by admins)
+class BankAccount(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    bank_name = db.Column(db.String(128), nullable=False)
+    account_name = db.Column(db.String(128), nullable=False)
+    account_number = db.Column(db.String(64), nullable=False)
+    bank_type = db.Column(db.String(64), nullable=True)
+    active = db.Column(db.Integer, default=1)  # 1 = visible on donation form
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 # Initialize DB
 with app.app_context():
     db.create_all()
@@ -110,7 +121,9 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # -------- DATABASE SETUP ----------
-# Ensure donations table has a column for proof_filename (filename of uploaded receipt)
+# Ensure donations table has a column for proof_filename (filename of uploaded receipt) and support bank_account
+# Create bank_account table for admin-managed transfer details
+
 def create_table():
     # Ensure existing DB (created by SQLAlchemy) has the new columns we need.
     conn = sqlite3.connect(DB_PATH)
@@ -138,6 +151,10 @@ def create_table():
             c.execute("ALTER TABLE donation ADD COLUMN approved_by TEXT")
         if 'approved_at' not in cols:
             c.execute("ALTER TABLE donation ADD COLUMN approved_at TEXT")
+        # Add optional bank_account_id to record which account the donor chose (nullable)
+        # Only add if not present
+        if 'bank_account_id' not in cols:
+            c.execute("ALTER TABLE donation ADD COLUMN bank_account_id INTEGER")
 
     # Also ensure 'image' table exists (SQLAlchemy uses singular 'image'). Rename legacy 'images' if present.
     c.execute("PRAGMA table_info(image)")
@@ -157,6 +174,29 @@ def create_table():
                 title TEXT,
                 taken_at TEXT,
                 uploaded_at TEXT
+            )
+        """)
+
+    # Ensure bank_account table exists; accept legacy plural name 'bank_accounts' if present
+    c.execute("PRAGMA table_info(bank_account)")
+    bank_cols = c.fetchall()
+    if not bank_cols:
+        c.execute("PRAGMA table_info(bank_accounts)")
+        if c.fetchall():
+            # rename legacy plural to singular for consistency
+            c.execute("ALTER TABLE bank_accounts RENAME TO bank_account")
+            c.execute("PRAGMA table_info(bank_account)")
+            bank_cols = c.fetchall()
+    if not bank_cols:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS bank_account (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bank_name TEXT,
+                account_name TEXT,
+                account_number TEXT,
+                bank_type TEXT,
+                active INTEGER DEFAULT 1,
+                created_at TEXT
             )
         """)
 
@@ -202,6 +242,22 @@ else:
     else:
         IMAGE_TABLE = 'image'
 
+# bank_account table resolution (support legacy plural 'bank_accounts')
+c.execute("PRAGMA table_info(bank_account)")
+if c.fetchall():
+    BANK_ACCOUNT_TABLE = 'bank_account'
+else:
+    c.execute("PRAGMA table_info(bank_accounts)")
+    if c.fetchall():
+        try:
+            c.execute("ALTER TABLE bank_accounts RENAME TO bank_account")
+            conn.commit()
+            BANK_ACCOUNT_TABLE = 'bank_account'
+        except Exception:
+            BANK_ACCOUNT_TABLE = 'bank_accounts'
+    else:
+        BANK_ACCOUNT_TABLE = 'bank_account'
+
 conn.close()
 
 # Ensure SQLAlchemy models map to the actual table names found on disk (helps when DB has legacy plural tables)
@@ -210,6 +266,10 @@ try:
         Donation.__table__.name = DONATION_TABLE
     if hasattr(Image, '__table__') and Image.__table__.name != IMAGE_TABLE:
         Image.__table__.name = IMAGE_TABLE
+    # Set bank account table name if present
+    if hasattr(BankAccount, '__table__') and BankAccount.__table__.name != BANK_ACCOUNT_TABLE:
+        BankAccount.__table__.name = BANK_ACCOUNT_TABLE
+
     # reflect updated names
     db.metadata.clear()
     db.reflect(bind=db.engine)
@@ -253,11 +313,18 @@ def donate():
     # generate a unique reference
     reference = uuid.uuid4().hex[:12]
 
+    # optional: record which bank account donor chose (not required)
+    bank_account_id = flask_request.form.get('bank_account_id')
+    try:
+        bank_account_id = int(bank_account_id) if bank_account_id is not None and bank_account_id != '' else None
+    except Exception:
+        bank_account_id = None
+
     # save donor as pending with proof filename in DB
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute(f"INSERT INTO {DONATION_TABLE} (fullname, phone, amount, reference, proof_filename, status) VALUES (?, ?, ?, ?, ?, 'pending')",
-              (fullname, phone, amount, reference, stored_name))
+    c.execute(f"INSERT INTO {DONATION_TABLE} (fullname, phone, amount, reference, proof_filename, status, bank_account_id) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
+              (fullname, phone, amount, reference, stored_name, bank_account_id))
     conn.commit()
     conn.close()
 
@@ -277,12 +344,25 @@ def donation_status(reference):
     # Use direct SQL so we are tolerant of legacy/plural table names and schema differences
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute(f"SELECT fullname, amount, status, reference, approved_by, approved_at FROM {DONATION_TABLE} WHERE reference=?", (reference,))
+    c.execute(f"SELECT fullname, amount, status, reference, approved_by, approved_at, bank_account_id FROM {DONATION_TABLE} WHERE reference=?", (reference,))
     row = c.fetchone()
     conn.close()
 
     if not row:
         return jsonify({"message": "Reference not found"}), 404
+
+    # bank_account_id (nullable)
+    bank_account_id = row[6]
+    bank_account = None
+    if bank_account_id:
+        try:
+            c2 = conn.cursor()
+            c2.execute(f"SELECT id, bank_name, account_name, account_number, bank_type FROM {BANK_ACCOUNT_TABLE} WHERE id=?", (bank_account_id,))
+            br = c2.fetchone()
+            if br:
+                bank_account = {"id": br[0], "bank_name": br[1], "account_name": br[2], "account_number": br[3], "bank_type": br[4]}
+        except Exception:
+            bank_account = None
 
     return jsonify({
         "fullname": row[0],
@@ -290,7 +370,9 @@ def donation_status(reference):
         "status": row[2],
         "reference": row[3],
         "approved_by": row[4],
-        "approved_at": row[5]
+        "approved_at": row[5],
+        "bank_account_id": bank_account_id,
+        "bank_account": bank_account
     })
 @app.route("/pending-donations", methods=["GET"])
 def pending_donations():
@@ -300,13 +382,13 @@ def pending_donations():
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute(f"SELECT fullname, phone, amount, reference, status, proof_filename, approved_by, approved_at FROM {DONATION_TABLE} WHERE status='pending'")
+    c.execute(f"SELECT fullname, phone, amount, reference, status, proof_filename, approved_by, approved_at, bank_account_id FROM {DONATION_TABLE} WHERE status='pending'")
     rows = c.fetchall()
     conn.close()
 
     result = []
     for r in rows:
-        result.append({'fullname': r[0], 'phone': r[1], 'amount': r[2], 'reference': r[3], 'status': r[4], 'proof_filename': r[5]})
+        result.append({'fullname': r[0], 'phone': r[1], 'amount': r[2], 'reference': r[3], 'status': r[4], 'proof_filename': r[5], 'approved_by': r[6], 'approved_at': r[7], 'bank_account_id': r[8]})
     return jsonify(result)
 
 
@@ -314,12 +396,12 @@ def pending_donations():
 def paid_users():
     conn = sqlite3.connect(DB_PATH)  # public endpoint: list paid donations
     c = conn.cursor()
-    c.execute(f"SELECT fullname, phone, amount, reference, status, proof_filename, approved_by, approved_at FROM {DONATION_TABLE} WHERE status='paid'")
+    c.execute(f"SELECT fullname, phone, amount, reference, status, proof_filename, approved_by, approved_at, bank_account_id FROM {DONATION_TABLE} WHERE status='paid'")
     rows = c.fetchall()
     conn.close()
     result = []
     for r in rows:
-        result.append({'fullname': r[0], 'phone': r[1], 'amount': r[2], 'reference': r[3], 'status': r[4], 'proof_filename': r[5]})
+        result.append({'fullname': r[0], 'phone': r[1], 'amount': r[2], 'reference': r[3], 'status': r[4], 'proof_filename': r[5], 'approved_by': r[6], 'approved_at': r[7], 'bank_account_id': r[8]})
     return jsonify(result)
 
 @app.route("/admin/validate-donation", methods=["POST"])
@@ -399,6 +481,96 @@ def admin_reset_donations():
     conn.close()
 
     return jsonify({"message": "Donations reset", "deleted_files": deleted_files, "deleted_rows": deleted}), 200
+
+
+# ---------------- ADMIN: BANK ACCOUNTS ----------------
+@app.route('/admin/bank-accounts', methods=['POST'])
+def admin_add_bank_account():
+    if not is_admin_authorized(request):
+        return jsonify({"message": "Unauthorized"}), 401
+    data = request.get_json() or {}
+    bank_name = (data.get('bank_name') or '').strip()
+    account_name = (data.get('account_name') or '').strip()
+    account_number = (data.get('account_number') or '').strip()
+    bank_type = data.get('bank_type') or ''
+    active = 1 if data.get('active', True) else 0
+    if not bank_name or not account_name or not account_number:
+        return jsonify({"message": "bank_name, account_name and account_number are required"}), 400
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(f"INSERT INTO {BANK_ACCOUNT_TABLE} (bank_name, account_name, account_number, bank_type, active, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+              (bank_name, account_name, account_number, bank_type, active, datetime.utcnow().isoformat()))
+    conn.commit()
+    inserted = c.lastrowid
+    conn.close()
+    return jsonify({"message": "Added", "id": inserted}), 201
+
+
+@app.route('/admin/bank-accounts', methods=['GET'])
+def admin_list_bank_accounts():
+    if not is_admin_authorized(request):
+        return jsonify({"message": "Unauthorized"}), 401
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(f"SELECT id, bank_name, account_name, account_number, bank_type, active, created_at FROM {BANK_ACCOUNT_TABLE} ORDER BY created_at DESC")
+    rows = c.fetchall()
+    conn.close()
+    accounts = []
+    for r in rows:
+        accounts.append({"id": r[0], "bank_name": r[1], "account_name": r[2], "account_number": r[3], "bank_type": r[4], "active": bool(r[5]), "created_at": r[6]})
+    return jsonify(accounts)
+
+
+@app.route('/admin/bank-accounts/<int:acc_id>', methods=['PUT'])
+def admin_update_bank_account(acc_id):
+    if not is_admin_authorized(request):
+        return jsonify({"message": "Unauthorized"}), 401
+    data = request.get_json() or {}
+    fields = []
+    params = []
+    for k in ['bank_name', 'account_name', 'account_number', 'bank_type']:
+        if k in data:
+            fields.append(f"{k} = ?")
+            params.append(data[k])
+    if 'active' in data:
+        fields.append("active = ?")
+        params.append(1 if data['active'] else 0)
+    if not fields:
+        return jsonify({"message": "No fields to update"}), 400
+    params.append(acc_id)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(f"UPDATE {BANK_ACCOUNT_TABLE} SET {', '.join(fields)} WHERE id = ?", params)
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Updated"}), 200
+
+
+@app.route('/admin/bank-accounts/<int:acc_id>', methods=['DELETE'])
+def admin_delete_bank_account(acc_id):
+    if not is_admin_authorized(request):
+        return jsonify({"message": "Unauthorized"}), 401
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(f"DELETE FROM {BANK_ACCOUNT_TABLE} WHERE id = ?", (acc_id,))
+    deleted = c.rowcount
+    conn.commit()
+    conn.close()
+    if deleted == 0:
+        return jsonify({"message": "Not found"}), 404
+    return jsonify({"message": "Deleted"}), 200
+
+
+# Public endpoint for active bank accounts (used by donation form)
+@app.route('/bank-accounts', methods=['GET'])
+def list_bank_accounts():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(f"SELECT id, bank_name, account_name, account_number, bank_type FROM {BANK_ACCOUNT_TABLE} WHERE active=1 ORDER BY created_at DESC")
+    rows = c.fetchall()
+    conn.close()
+    accounts = [{"id": r[0], "bank_name": r[1], "account_name": r[2], "account_number": r[3], "bank_type": r[4]} for r in rows]
+    return jsonify(accounts)
 
 
 # ---------------- GALLERY / IMAGES ----------------
