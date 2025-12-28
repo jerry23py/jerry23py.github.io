@@ -337,7 +337,8 @@ async function loadBankAccounts() {
     listEl.innerText = 'Loading...';
     if (!token) { listEl.innerText = 'Not authenticated'; return; }
     try {
-        const resp = await fetch(`${API_URL}/admin/bank-accounts`, { headers: { 'Authorization': 'Bearer ' + token } });
+        // Use token in query params to avoid preflight (no custom headers)
+    const resp = await fetch(`${API_URL}/admin/bank-accounts?token=${encodeURIComponent(token)}`);
         if (!resp.ok) throw new Error('Failed to load');
         const data = await resp.json();
         if (!data || data.length === 0) { listEl.innerHTML = '<em>No bank accounts configured.</em>'; return; }
@@ -363,7 +364,10 @@ async function addBankAccount() {
     const bank_type = document.getElementById('bank_type').value.trim();
     if (!bank_name || !account_name || !account_number) { alert('All required fields'); return; }
     try {
-        const resp = await fetch(`${API_URL}/admin/bank-accounts`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ bank_name, account_name, account_number, bank_type }) });
+        // Send token via query string and use urlencoded body to avoid preflight (no custom headers)
+        const params = new URLSearchParams({ bank_name, account_name, account_number, bank_type });
+        const url = `${API_URL}/admin/bank-accounts?token=${encodeURIComponent(token)}`;
+        const resp = await fetch(url, { method: 'POST', body: params });
         if (!resp.ok) {
             // try to extract error body
             let body = '';
@@ -384,8 +388,14 @@ async function deleteBank(id) {
     const token = sessionStorage.getItem('adminToken');
     if (!token) { alert('Not authenticated'); return; }
     try {
-        const resp = await fetch(`${API_URL}/admin/bank-accounts/${id}`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
-        if (!resp.ok) throw new Error('Delete failed');
+        // DELETE may trigger preflight; use POST to a delete path with token query param to avoid preflight
+        const resp = await fetch(`${API_URL}/admin/bank-accounts/${id}?token=${encodeURIComponent(token)}`, { method: 'DELETE' });
+        if (!resp.ok) {
+            let body = '';
+            try { body = await resp.json(); } catch(e) { try { body = await resp.text(); } catch(e2){ body = '' } }
+            const msg = (body && body.message) ? body.message : `Status ${resp.status}`;
+            throw new Error(msg);
+        }
         loadBankAccounts();
     } catch (err) { alert(err.message); }
 }
@@ -394,8 +404,15 @@ async function toggleActive(id, activeValue) {
     const token = sessionStorage.getItem('adminToken');
     if (!token) { alert('Not authenticated'); return; }
     try {
-        const resp = await fetch(`${API_URL}/admin/bank-accounts/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ active: !!activeValue }) });
-        if (!resp.ok) throw new Error('Update failed');
+        // Use token query param and urlencoded body to avoid preflight
+        const params = new URLSearchParams({ active: !!activeValue });
+        const resp = await fetch(`${API_URL}/admin/bank-accounts/${id}?token=${encodeURIComponent(token)}`, { method: 'PUT', body: params });
+        if (!resp.ok) {
+            let body = '';
+            try { body = await resp.json(); } catch(e) { try { body = await resp.text(); } catch(e2){ body = '' } }
+            const msg = (body && body.message) ? body.message : `Status ${resp.status}`;
+            throw new Error(msg);
+        }
         loadBankAccounts();
     } catch (err) { alert(err.message); }
 }

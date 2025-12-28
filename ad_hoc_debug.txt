@@ -1,0 +1,6 @@
+If you see this file, the environment couldn't run the debug script automatically.
+
+To check DB manually run:
+python -c "from cds_backend.app import app; import json;\nwith app.test_client() as client:\n    r=client.post('/admin/login', json={'password':'admin123'});\n    token=r.get_json()['token'];\n    d=client.get('/admin/_debug-db', headers={'Authorization':'Bearer '+token});\n    print(json.dumps(d.get_json(), indent=2))"
+
+Or in your shell run: python cds_backend\scripts\query_debug.py
