@@ -491,77 +491,79 @@ def admin_reset_donations():
     return jsonify({"message": "Donations reset", "deleted_files": deleted_files, "deleted_rows": deleted}), 200
 
 
-# ---------------- ADMIN: BANK ACCOUNTS ----------------
-# Accept both trailing and non-trailing slash for preflight and POST to avoid 405s from mismatched URLs
-@app.route('/admin/bank-accounts', methods=['OPTIONS'])
-@app.route('/admin/bank-accounts/', methods=['OPTIONS'])
-def admin_bank_accounts_options():
-    # Explicit OPTIONS for CORS preflight from browsers
-    resp = app.make_response(('', 204))
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    resp.headers['Access-Control-Allow-Methods'] = 'GET,POST,OPTIONS'
-    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
-    return resp
+# ---------------- ADMIN: BANK ACCOUNTS (combined GET/POST/OPTIONS)
+@app.route('/admin/bank-accounts', methods=['GET','POST','OPTIONS'])
+@app.route('/admin/bank-accounts/', methods=['GET','POST','OPTIONS'])
+def admin_bank_accounts():
+    app.logger.info(f"admin_bank_accounts called: method={request.method} path={request.path} origin={request.headers.get('Origin')}")
+    # OPTIONS - CORS preflight
+    if request.method == 'OPTIONS':
+        resp = app.make_response(('', 204))
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'GET,POST,OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
+        return resp
 
-
-@app.route('/admin/bank-accounts', methods=['POST'])
-@app.route('/admin/bank-accounts/', methods=['POST'])
-def admin_add_bank_account():
-    app.logger.info(f"admin_add_bank_account called: method={request.method} path={request.path} headers={[k for k in request.headers.keys()]}")
-    if not is_admin_authorized(request):
-        return jsonify({"message": "Unauthorized"}), 401
-    data = request.get_json() or {}
-    bank_name = (data.get('bank_name') or '').strip()
-    account_name = (data.get('account_name') or '').strip()
-    account_number = (data.get('account_number') or '').strip()
-    bank_type = data.get('bank_type') or ''
-    active = 1 if data.get('active', True) else 0
-    if not bank_name or not account_name or not account_number:
-        return jsonify({"message": "bank_name, account_name and account_number are required"}), 400
-    try:
-        # Log DB path and existence for debugging
-        app.logger.info(f"DB path: {DB_PATH}; exists={os.path.exists(DB_PATH)}; cwd={os.getcwd()}")
+    # GET - list accounts (admin-only)
+    if request.method == 'GET':
+        if not is_admin_authorized(request):
+            return jsonify({"message": "Unauthorized"}), 401
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        app.logger.info(f"Executing insert into {BANK_ACCOUNT_TABLE}")
-        c.execute(f"INSERT INTO {BANK_ACCOUNT_TABLE} (bank_name, account_name, account_number, bank_type, active, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                  (bank_name, account_name, account_number, bank_type, active, datetime.utcnow().isoformat()))
-        conn.commit()
-        inserted = c.lastrowid
-        app.logger.info(f"Inserted bank account id={inserted}")
+        c.execute(f"SELECT id, bank_name, account_name, account_number, bank_type, active, created_at FROM {BANK_ACCOUNT_TABLE} ORDER BY created_at DESC")
+        rows = c.fetchall()
         conn.close()
-        return jsonify({"message": "Added", "id": inserted}), 201
-    except sqlite3.OperationalError as e:
-        app.logger.error(f"OperationalError adding bank account: {e}")
-        try:
-            conn.rollback()
-            conn.close()
-        except Exception:
-            pass
-        return jsonify({"message": "Failed to add - operational error", "error": str(e)}), 500
-    except Exception as e:
-        app.logger.error(f"Failed to add bank account: {e}")
-        try:
-            conn.rollback()
-            conn.close()
-        except Exception:
-            pass
-        return jsonify({"message": "Failed to add", "error": str(e)}), 500
+        accounts = []
+        for r in rows:
+            accounts.append({"id": r[0], "bank_name": r[1], "account_name": r[2], "account_number": r[3], "bank_type": r[4], "active": bool(r[5]), "created_at": r[6]})
+        return jsonify(accounts)
 
-
-@app.route('/admin/bank-accounts', methods=['GET'])
-def admin_list_bank_accounts():
-    if not is_admin_authorized(request):
-        return jsonify({"message": "Unauthorized"}), 401
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(f"SELECT id, bank_name, account_name, account_number, bank_type, active, created_at FROM {BANK_ACCOUNT_TABLE} ORDER BY created_at DESC")
-    rows = c.fetchall()
-    conn.close()
-    accounts = []
-    for r in rows:
-        accounts.append({"id": r[0], "bank_name": r[1], "account_name": r[2], "account_number": r[3], "bank_type": r[4], "active": bool(r[5]), "created_at": r[6]})
-    return jsonify(accounts)
+    # POST - create new account (accept JSON or form-encoded)
+    if request.method == 'POST':
+        if not is_admin_authorized(request):
+            return jsonify({"message": "Unauthorized"}), 401
+        # Accept JSON or form body
+        data = {}
+        if request.is_json:
+            data = request.get_json() or {}
+        else:
+            # form-encoded submitted by browser
+            data = request.form.to_dict()
+        bank_name = (data.get('bank_name') or '').strip()
+        account_name = (data.get('account_name') or '').strip()
+        account_number = (data.get('account_number') or '').strip()
+        bank_type = data.get('bank_type') or ''
+        active = 1 if (str(data.get('active', '1')).lower() in ['1','true','yes']) else 0
+        if not bank_name or not account_name or not account_number:
+            return jsonify({"message": "bank_name, account_name and account_number are required"}), 400
+        try:
+            app.logger.info(f"DB path: {DB_PATH}; exists={os.path.exists(DB_PATH)}; cwd={os.getcwd()}")
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            app.logger.info(f"Executing insert into {BANK_ACCOUNT_TABLE}")
+            c.execute(f"INSERT INTO {BANK_ACCOUNT_TABLE} (bank_name, account_name, account_number, bank_type, active, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                      (bank_name, account_name, account_number, bank_type, active, datetime.utcnow().isoformat()))
+            conn.commit()
+            inserted = c.lastrowid
+            app.logger.info(f"Inserted bank account id={inserted}")
+            conn.close()
+            return jsonify({"message": "Added", "id": inserted}), 201
+        except sqlite3.OperationalError as e:
+            app.logger.error(f"OperationalError adding bank account: {e}")
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
+            return jsonify({"message": "Failed to add - operational error", "error": str(e)}), 500
+        except Exception as e:
+            app.logger.error(f"Failed to add bank account: {e}")
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
+            return jsonify({"message": "Failed to add", "error": str(e)}), 500
 
 
 @app.route('/admin/bank-accounts/<int:acc_id>', methods=['OPTIONS'])
