@@ -484,8 +484,19 @@ def admin_reset_donations():
 
 
 # ---------------- ADMIN: BANK ACCOUNTS ----------------
+@app.route('/admin/bank-accounts', methods=['OPTIONS'])
+def admin_bank_accounts_options():
+    # Explicit OPTIONS for CORS preflight from browsers
+    resp = app.make_response(('', 204))
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Methods'] = 'GET,POST,OPTIONS'
+    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
+    return resp
+
+
 @app.route('/admin/bank-accounts', methods=['POST'])
 def admin_add_bank_account():
+    app.logger.info(f"admin_add_bank_account called: method={request.method} path={request.path} headers={[k for k in request.headers.keys()]}")
     if not is_admin_authorized(request):
         return jsonify({"message": "Unauthorized"}), 401
     data = request.get_json() or {}
@@ -496,14 +507,35 @@ def admin_add_bank_account():
     active = 1 if data.get('active', True) else 0
     if not bank_name or not account_name or not account_number:
         return jsonify({"message": "bank_name, account_name and account_number are required"}), 400
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(f"INSERT INTO {BANK_ACCOUNT_TABLE} (bank_name, account_name, account_number, bank_type, active, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-              (bank_name, account_name, account_number, bank_type, active, datetime.utcnow().isoformat()))
-    conn.commit()
-    inserted = c.lastrowid
-    conn.close()
-    return jsonify({"message": "Added", "id": inserted}), 201
+    try:
+        # Log DB path and existence for debugging
+        app.logger.info(f"DB path: {DB_PATH}; exists={os.path.exists(DB_PATH)}; cwd={os.getcwd()}")
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        app.logger.info(f"Executing insert into {BANK_ACCOUNT_TABLE}")
+        c.execute(f"INSERT INTO {BANK_ACCOUNT_TABLE} (bank_name, account_name, account_number, bank_type, active, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                  (bank_name, account_name, account_number, bank_type, active, datetime.utcnow().isoformat()))
+        conn.commit()
+        inserted = c.lastrowid
+        app.logger.info(f"Inserted bank account id={inserted}")
+        conn.close()
+        return jsonify({"message": "Added", "id": inserted}), 201
+    except sqlite3.OperationalError as e:
+        app.logger.error(f"OperationalError adding bank account: {e}")
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"message": "Failed to add - operational error", "error": str(e)}), 500
+    except Exception as e:
+        app.logger.error(f"Failed to add bank account: {e}")
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"message": "Failed to add", "error": str(e)}), 500
 
 
 @app.route('/admin/bank-accounts', methods=['GET'])
@@ -521,8 +553,18 @@ def admin_list_bank_accounts():
     return jsonify(accounts)
 
 
+@app.route('/admin/bank-accounts/<int:acc_id>', methods=['OPTIONS'])
+def admin_bank_account_item_options(acc_id):
+    resp = app.make_response(('', 204))
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Methods'] = 'PUT,DELETE,OPTIONS'
+    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
+    return resp
+
+
 @app.route('/admin/bank-accounts/<int:acc_id>', methods=['PUT'])
 def admin_update_bank_account(acc_id):
+    app.logger.info(f"admin_update_bank_account called: method={request.method} path={request.path} headers={[k for k in request.headers.keys()]}")
     if not is_admin_authorized(request):
         return jsonify({"message": "Unauthorized"}), 401
     data = request.get_json() or {}
@@ -538,39 +580,87 @@ def admin_update_bank_account(acc_id):
     if not fields:
         return jsonify({"message": "No fields to update"}), 400
     params.append(acc_id)
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(f"UPDATE {BANK_ACCOUNT_TABLE} SET {', '.join(fields)} WHERE id = ?", params)
-    conn.commit()
-    conn.close()
-    return jsonify({"message": "Updated"}), 200
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute(f"UPDATE {BANK_ACCOUNT_TABLE} SET {', '.join(fields)} WHERE id = ?", params)
+        conn.commit()
+        conn.close()
+        return jsonify({"message": "Updated"}), 200
+    except Exception as e:
+        app.logger.error(f"Failed to update bank account {acc_id}: {e}")
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"message": "Failed to update", "error": str(e)}), 500
 
 
 @app.route('/admin/bank-accounts/<int:acc_id>', methods=['DELETE'])
 def admin_delete_bank_account(acc_id):
     if not is_admin_authorized(request):
         return jsonify({"message": "Unauthorized"}), 401
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(f"DELETE FROM {BANK_ACCOUNT_TABLE} WHERE id = ?", (acc_id,))
-    deleted = c.rowcount
-    conn.commit()
-    conn.close()
-    if deleted == 0:
-        return jsonify({"message": "Not found"}), 404
-    return jsonify({"message": "Deleted"}), 200
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute(f"DELETE FROM {BANK_ACCOUNT_TABLE} WHERE id = ?", (acc_id,))
+        deleted = c.rowcount
+        conn.commit()
+        conn.close()
+        if deleted == 0:
+            return jsonify({"message": "Not found"}), 404
+        return jsonify({"message": "Deleted"}), 200
+    except Exception as e:
+        app.logger.error(f"Failed to delete bank account {acc_id}: {e}")
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"message": "Failed to delete", "error": str(e)}), 500
 
 
 # Public endpoint for active bank accounts (used by donation form)
 @app.route('/bank-accounts', methods=['GET'])
 def list_bank_accounts():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(f"SELECT id, bank_name, account_name, account_number, bank_type FROM {BANK_ACCOUNT_TABLE} WHERE active=1 ORDER BY created_at DESC")
-    rows = c.fetchall()
-    conn.close()
-    accounts = [{"id": r[0], "bank_name": r[1], "account_name": r[2], "account_number": r[3], "bank_type": r[4]} for r in rows]
-    return jsonify(accounts)
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute(f"SELECT id, bank_name, account_name, account_number, bank_type FROM {BANK_ACCOUNT_TABLE} WHERE active=1 ORDER BY created_at DESC")
+        rows = c.fetchall()
+        conn.close()
+        accounts = [{"id": r[0], "bank_name": r[1], "account_name": r[2], "account_number": r[3], "bank_type": r[4]} for r in rows]
+        return jsonify(accounts)
+    except Exception as e:
+        app.logger.error(f"Failed to list bank accounts: {e}")
+        return jsonify({"message": "Failed to fetch bank accounts", "error": str(e)}), 500
+
+
+# Admin-only debug endpoint (returns DB file status and row counts) - useful for debugging issues
+@app.route('/admin/_debug-db', methods=['GET'])
+def admin_debug_db():
+    if not is_admin_authorized(request):
+        return jsonify({"message": "Unauthorized"}), 401
+    try:
+        info = {"cwd": os.getcwd(), "db_path": DB_PATH, "db_exists": os.path.exists(DB_PATH)}
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        try:
+            c.execute(f"SELECT COUNT(*) FROM {BANK_ACCOUNT_TABLE}")
+            info['bank_accounts_count'] = c.fetchone()[0]
+        except Exception as e:
+            info['bank_accounts_count_error'] = str(e)
+        try:
+            c.execute(f"SELECT id, bank_name, account_name, account_number, bank_type, active, created_at FROM {BANK_ACCOUNT_TABLE} ORDER BY created_at DESC LIMIT 5")
+            info['bank_accounts_latest'] = [dict(id=r[0], bank_name=r[1], account_name=r[2], account_number=r[3], bank_type=r[4], active=r[5], created_at=r[6]) for r in c.fetchall()]
+        except Exception as e:
+            info['bank_accounts_latest_error'] = str(e)
+        conn.close()
+        return jsonify(info)
+    except Exception as e:
+        app.logger.error(f"Debug endpoint failed: {e}")
+        return jsonify({"message": "Debug query failed", "error": str(e)}), 500
 
 
 # ---------------- GALLERY / IMAGES ----------------
