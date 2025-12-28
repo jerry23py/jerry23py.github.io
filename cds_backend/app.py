@@ -19,7 +19,14 @@ load_dotenv(os.path.join(basedir, '.env'))
 
 app = Flask(__name__)
 # Allow CORS for admin routes and public endpoints. Ensure Authorization header is allowed for preflight.
-CORS(app, resources={r"/admin/*": {"origins": "*"}, r"/bank-accounts": {"origins": "*"}, r"/bank-accounts/": {"origins": "*"}}, expose_headers=['Content-Type'], supports_credentials=True, allow_headers=['Content-Type','Authorization','X-ADMIN-KEY','X-ADMIN-NAME'])  # allows frontend to call API and include Authorization header
+CORS(app, resources={
+    r"/admin/*": {"origins": "*"},
+    r"/bank-accounts": {"origins": "*"},
+    r"/bank-accounts/": {"origins": "*"},
+    r"/pending-donations": {"origins": "*"},
+    r"/pending-donations/": {"origins": "*"},
+    r"/protected-proof/*": {"origins": "*"}
+}, expose_headers=['Content-Type'], supports_credentials=True, allow_headers=['Content-Type','Authorization','X-ADMIN-KEY','X-ADMIN-NAME'])  # allows frontend to call API and include Authorization header
 
 # Database setup
 app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.environ.get('DONATIONS_DB', 'donations.db')}"
