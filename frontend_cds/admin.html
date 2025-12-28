@@ -364,7 +364,13 @@ async function addBankAccount() {
     if (!bank_name || !account_name || !account_number) { alert('All required fields'); return; }
     try {
         const resp = await fetch(`${API_URL}/admin/bank-accounts`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ bank_name, account_name, account_number, bank_type }) });
-        if (!resp.ok) throw new Error('Failed to add');
+        if (!resp.ok) {
+            // try to extract error body
+            let body = '';
+            try { body = await resp.json(); } catch(e) { try { body = await resp.text(); } catch(e2){ body = '' } }
+            const msg = (body && body.message) ? body.message : (typeof body === 'string' && body) ? body : `Status ${resp.status}`;
+            throw new Error(msg);
+        }
         document.getElementById('bank_name').value = '';
         document.getElementById('account_name').value = '';
         document.getElementById('account_number').value = '';
