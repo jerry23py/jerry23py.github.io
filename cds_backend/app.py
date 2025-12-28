@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 from flask import send_from_directory, abort, request as flask_request
 
+# token support (URLSafeTimedSerializer works across itsdangerous versions)
+from itsdangerous import URLSafeTimedSerializer as Serializer, BadSignature, SignatureExpired
+
 # Load local .env if present (for local development). The file is gitignored.
 basedir = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(os.path.join(basedir, '.env'))
@@ -51,10 +54,14 @@ with app.app_context():
 # Admin configuration for donation validation
 
 # Load sensitive config from environment variables
-# ADMIN_SECRET is used to authenticate admin actions (marking donations as paid)
+# ADMIN_SECRET is used as the admin password; set this to a secure value in production
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "admin123")
 if not os.environ.get("ADMIN_SECRET"):
     app.logger.warning("ADMIN_SECRET not set. Using default insecure admin key; set ADMIN_SECRET in env for production.")
+# Secret key used to sign admin tokens
+SECRET_KEY = os.environ.get("SECRET_KEY") or os.environ.get("FLASK_SECRET") or (os.urandom(24).hex())
+# token expiry in seconds
+ADMIN_TOKEN_EXPIRY = int(os.environ.get("ADMIN_TOKEN_EXPIRY", 3600))
 DB_PATH = os.environ.get("DONATIONS_DB", "donations.db")
 UPLOAD_FOLDER = os.environ.get("GALLERY_FOLDER", os.path.join(os.getcwd(), "gallery_images"))
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "pdf"}
@@ -62,6 +69,38 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "pdf"}
 # Ensure upload folder exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# serializer for admin tokens
+_token_serializer = Serializer(SECRET_KEY, salt='admin-token')
+
+def generate_admin_token():
+    # URLSafeTimedSerializer.dumps returns a string
+    return _token_serializer.dumps({"role": "admin"})
+
+
+def verify_admin_token(token):
+    try:
+        _token_serializer.loads(token, max_age=ADMIN_TOKEN_EXPIRY)
+        return True
+    except SignatureExpired:
+        return False
+    except BadSignature:
+        return False
+
+
+def is_admin_authorized(req):
+    # Accept Authorization: Bearer <token> or legacy X-ADMIN-KEY (admin password) for compatibility
+    auth = req.headers.get('Authorization', '')
+    if auth.startswith('Bearer '):
+        token = auth.split(' ', 1)[1].strip()
+        return verify_admin_token(token)
+    legacy = req.headers.get('X-ADMIN-KEY', '')
+    if legacy and legacy == ADMIN_SECRET:
+        return True
+    # allow token via query param for anchor links
+    t = req.args.get('token')
+    if t:
+        return verify_admin_token(t)
+    return False
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -172,9 +211,8 @@ def donation_status(reference):
     })
 @app.route("/pending-donations", methods=["GET"])
 def pending_donations():
-    # Admin endpoint - requires ADMIN key in header
-    key = request.headers.get("X-ADMIN-KEY", "")
-    if key != ADMIN_SECRET:
+    # Admin endpoint - requires valid admin token
+    if not is_admin_authorized(request):
         return jsonify({"message": "Unauthorized"}), 401
 
     conn = sqlite3.connect(DB_PATH)
@@ -191,6 +229,9 @@ def pending_donations():
 
 @app.route('/paid-users', methods=['GET'])
 def paid_users():
+    # protect this endpoint
+    if not is_admin_authorized(request):
+        return jsonify({"message": "Unauthorized"}), 401
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT fullname, phone, amount, reference, status, proof_filename FROM donations WHERE status='paid'")
@@ -204,8 +245,7 @@ def paid_users():
 @app.route("/admin/validate-donation", methods=["POST"])
 def validate_donation():
     # Admin endpoint - marks a donation as paid
-    key = request.headers.get("X-ADMIN-KEY", "")
-    if key != ADMIN_SECRET:
+    if not is_admin_authorized(request):
         return jsonify({"message": "Unauthorized"}), 401
 
     data = request.get_json() or {}
@@ -215,14 +255,52 @@ def validate_donation():
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE donations SET status='paid' WHERE reference=?", (reference,))
+    # only update if not already paid
+    c.execute("UPDATE donations SET status='paid' WHERE reference=? AND status!='paid'", (reference,))
     if c.rowcount == 0:
+        # check if the reference exists and is already paid
+        c2 = conn.cursor()
+        c2.execute("SELECT status FROM donations WHERE reference=?", (reference,))
+        row = c2.fetchone()
         conn.close()
+        if row and row[0] == 'paid':
+            return jsonify({"message": "Already marked as paid"}), 200
         return jsonify({"message": "Reference not found"}), 404
     conn.commit()
     conn.close()
 
     return jsonify({"message": "Donation validated"}), 200
+
+
+@app.route('/admin/reset-donations', methods=['POST'])
+def admin_reset_donations():
+    if not is_admin_authorized(request):
+        return jsonify({"message": "Unauthorized"}), 401
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT proof_filename FROM donations WHERE proof_filename IS NOT NULL")
+    rows = c.fetchall()
+    # delete files if exist
+    deleted_files = 0
+    for r in rows:
+        fname = r[0]
+        if not fname:
+            continue
+        path = os.path.join(UPLOAD_FOLDER, fname)
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+                deleted_files += 1
+        except Exception as e:
+            app.logger.warning(f"Failed to delete proof file {path}: {e}")
+
+    c.execute("DELETE FROM donations")
+    deleted = c.rowcount
+    conn.commit()
+    conn.close()
+
+    return jsonify({"message": "Donations reset", "deleted_files": deleted_files, "deleted_rows": deleted}), 200
 
 
 # ---------------- GALLERY / IMAGES ----------------
@@ -305,7 +383,19 @@ def gallery_list():
 
 @app.route('/gallery-image/<path:filename>', methods=['GET'])
 def serve_gallery_image(filename):
-    # Prevent path traversal
+    # Public gallery images (unchanged)
+    safe = secure_filename(filename)
+    full = os.path.join(UPLOAD_FOLDER, safe)
+    if not os.path.exists(full):
+        abort(404)
+    return send_from_directory(UPLOAD_FOLDER, safe)
+
+
+@app.route('/protected-proof/<path:filename>', methods=['GET'])
+def protected_proof(filename):
+    # Require admin token (allow ?token=... for browser access)
+    if not is_admin_authorized(request):
+        return jsonify({"message": "Unauthorized"}), 401
     safe = secure_filename(filename)
     full = os.path.join(UPLOAD_FOLDER, safe)
     if not os.path.exists(full):
@@ -316,8 +406,21 @@ def serve_gallery_image(filename):
 # ---------------- ADMIN / EXPORT (paid users) ----------------
 # Note: `paid_users` endpoint is defined above including `proof_filename` in the response.
 
+@app.route('/admin/login', methods=['POST'])
+def admin_login():
+    data = request.get_json() or {}
+    password = data.get('password', '')
+    if password != ADMIN_SECRET:
+        return jsonify({'message': 'Unauthorized'}), 401
+    token = generate_admin_token()
+    return jsonify({'token': token, 'expires_in': ADMIN_TOKEN_EXPIRY}), 200
+
+
 @app.route('/download-csv', methods=['GET'])
 def download_csv():
+    # protect download with admin token
+    if not is_admin_authorized(request):
+        return jsonify({"message": "Unauthorized"}), 401
     import csv
     from io import StringIO
     conn = sqlite3.connect(DB_PATH)
