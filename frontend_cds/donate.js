@@ -2,48 +2,54 @@
 // Fall back to localhost for local development if not provided.
 const BACKEND_URL = window.BACKEND_URL || 'http://127.0.0.1:5000';
 
+// ----------------- DONATION FORM SUBMISSION -----------------
 const form = document.getElementById("donationForm");
-let hasSubmitted = false; // 🔐 guard flag
+
 if (form) {
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
-         // ❌ Block second submission
-        if (hasSubmitted) {
+
+        // 🔐 HARD LOCK (DOM-based, not JS variable)
+        if (form.dataset.submitted === "true") {
             alert("This donation has already been submitted.");
             return;
         }
 
-        hasSubmitted = true; // lock immediately
-          const submitButton = form.querySelector('button[type="submit"]');
-        if (submitButton) {
-            submitButton.disabled = true;
-            submitButton.innerText = "Processing...";
-        }  try {
+        form.dataset.submitted = "true";
+
+        const submitButton = form.querySelector('button[type="submit"]');
+        submitButton.disabled = true;
+        submitButton.innerText = "Processing...";
+
+        try {
             const formData = new FormData(form);
             const response = await fetch("/donate", {
                 method: "POST",
                 body: formData
             });
-           if (!response.ok) {
+
+            if (!response.ok) {
                 const err = await response.json();
                 throw new Error(err.message || "Submission failed");
             }
-            const result = await response.json();
-            console.log(result);
+
+            await response.json();
             alert("Payment successful!");
 
-             // ✅ Reset UI but NOT submission lock
-            submitButton.disabled = false;
             submitButton.innerText = "Pay Now";
+            submitButton.disabled = false;
 
         } catch (error) {
-           
             console.error(error);
             alert("Payment failed.");
-            hasSubmitted = false; // allow retry only if it failed
-            submitButton.disabled = false;
+
+            // unlock ONLY on failure
+            delete form.dataset.submitted;
             submitButton.innerText = "Pay Now";
+            submitButton.disabled = false;
         }
+ 
+
 
 
         const statusEl = document.getElementById("status");
