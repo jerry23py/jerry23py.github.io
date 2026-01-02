@@ -41,7 +41,7 @@ if (form) {
 
         } catch (error) {
             console.error(error);
-            alert("Payment failed.");
+            alert("Payment failed!!!.");
 
             // unlock ONLY on failure
             delete form.dataset.submitted;
