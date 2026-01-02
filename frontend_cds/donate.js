@@ -6,6 +6,8 @@ const form = document.getElementById("donationForm");
 if (form) {
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
+
+
         // Disable the submit button to prevent double-click
         const submitButton = form.querySelector('button[type="submit"]');
         if (submitButton) {
@@ -35,8 +37,8 @@ if (form) {
                 submitButton.innerText = "Pay Now";
             }
         }
-    });
-}
+
+
 
         
 
