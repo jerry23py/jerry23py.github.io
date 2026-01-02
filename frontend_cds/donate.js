@@ -19,6 +19,7 @@ if (form) {
         const submitButton = form.querySelector('button[type="submit"]');
         submitButton.disabled = true;
         submitButton.innerText = "Processing...";
+        
 
        
 
@@ -34,17 +35,15 @@ if (form) {
             await response.json();
             alert("Payment successful!");
 
+
             submitButton.innerText = "Pay Now";
             submitButton.disabled = false;
 
         } catch (error) {
+
             console.error(error);
             alert("Payment failed.");
 
-            // unlock ONLY on failure
-            delete form.dataset.submitted;
-            submitButton.innerText = "Pay Now";
-            submitButton.disabled = false;
         }
  
 
