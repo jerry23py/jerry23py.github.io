@@ -3,28 +3,56 @@
 const BACKEND_URL = window.BACKEND_URL || 'http://127.0.0.1:5000';
 
 const form = document.getElementById("donationForm");
+let hasSubmitted = false;
+
 if (form) {
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
-          const submitButton = form.querySelector('button[type="submit"]');
-        if (submitButton) {
-            submitButton.disabled = true;
-            submitButton.innerText = "Processing...";
-        }  try {
+
+        // ❌ Block second submission
+        if (hasSubmitted) {
+            alert("This donation has already been submitted.");
+            return;
+        }
+
+        hasSubmitted = true; // lock immediately
+
+        const submitButton = form.querySelector('button[type="submit"]');
+        submitButton.disabled = true;
+        submitButton.innerText = "Processing...";
+
+        try {
             const formData = new FormData(form);
+
             const response = await fetch("/donate", {
                 method: "POST",
                 body: formData
             });
 
+            // 🔴 important check
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.message || "Submission failed");
+            }
+
             const result = await response.json();
             console.log(result);
             alert("Payment successful!");
+
+            // ✅ Reset UI only
+            submitButton.disabled = false;
+            submitButton.innerText = "Pay Now";
+
         } catch (error) {
             console.error(error);
-            alert("Payment failed.");
-        }
+            alert(error.message || "Payment failed.");
 
+            // 🔓 Allow retry
+            hasSubmitted = false;
+            submitButton.disabled = false;
+            submitButton.innerText = "Pay Now";
+        }
+        // ----------------- UPLOAD PROOF OF PAYMENT -----------------
 
         const statusEl = document.getElementById("status");
         const loadingModal = document.getElementById('loadingModal');
