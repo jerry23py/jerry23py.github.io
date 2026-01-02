@@ -9,86 +9,112 @@ if (form) {
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
 
+        // 🔐 HARD LOCK (DOM-based, not JS variable)
         if (form.dataset.submitted === "true") {
             alert("This donation has already been submitted.");
             return;
         }
+
         form.dataset.submitted = "true";
 
         const submitButton = form.querySelector('button[type="submit"]');
         submitButton.disabled = true;
         submitButton.innerText = "Processing...";
 
-        const statusEl = document.getElementById("status");
-        const loadingModal = document.getElementById('loadingModal');
-        const loadingText = document.getElementById('loadingText');
-
-        const showLoading = (text) => { if (loadingText) loadingText.innerText = text; if (loadingModal) loadingModal.style.display = 'flex'; }
-        const hideLoading = () => { if (loadingModal) loadingModal.style.display = 'none'; }
+       
 
         try {
-            // ------------------- VALIDATE PROOF -------------------
-            const proofFile = document.getElementById('proof').files[0];
-            if (!proofFile) {
-                alert("Please attach a proof of payment file.");
-                throw new Error("Proof file missing");
-            }
-
-            showLoading('Uploading proof…');
-
-            // ------------------- SUBMIT DONATION -------------------
             const formData = new FormData(form);
-            const donationResp = await fetch("/donate", { method: "POST", body: formData });
+            const response = await fetch("/donate", {
+                method: "POST",
+                body: formData
+            });
 
-            if (!donationResp.ok) {
-                const err = await donationResp.json();
-                throw new Error(err.message || "Donation failed");
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.message || "Submission failed");
             }
 
-            const donationResult = await donationResp.json();
+            await response.json();
+            alert("Payment successful!");
 
-            // ------------------- UPLOAD PROOF -------------------
-            const fd = new FormData();
-            fd.append('fullname', document.getElementById("fullname").value);
-            fd.append('email', document.getElementById("email").value);
-            fd.append('phone', document.getElementById("phone").value);
-            fd.append('amount', document.getElementById("amount").value);
-            const bankRadio = document.querySelector('input[name="bank_account_id"]:checked');
-            if (bankRadio) fd.append('bank_account_id', bankRadio.value);
-            fd.append('proof', proofFile);
-
-            const proofResp = await fetch(`${BACKEND_URL}/donate`, { method: "POST", body: fd });
-
-            if (!proofResp.ok) {
-                const text = await proofResp.text();
-                throw new Error(`Proof upload failed: ${text}`);
-            }
-
-            const proofResult = await proofResp.json();
-
-            // ------------------- SUCCESS -------------------
-            alert(`Donation successful! Reference: ${proofResult.reference || 'N/A'}`);
-            if (statusEl) statusEl.innerText = `Donation recorded. Reference: ${proofResult.reference || ''}`;
-            showLoading('Done');
-            setTimeout(hideLoading, 1500);
-
-            try { navigator.clipboard?.writeText(proofResult.reference); } catch (e) {}
+            submitButton.innerText = "Pay Now";
+            submitButton.disabled = false;
 
         } catch (error) {
             console.error(error);
-            alert(error.message || "Payment failed.");
+            alert("Payment failed.");
 
-            // 🔓 Unlock form on failure
+            // unlock ONLY on failure
             delete form.dataset.submitted;
-
-        } finally {
-            submitButton.disabled = false;
             submitButton.innerText = "Pay Now";
+            submitButton.disabled = false;
+        }
+ 
+
+
+
+        const statusEl = document.getElementById("status");
+        const loadingModal = document.getElementById('loadingModal');
+        const loadingText = document.getElementById('loadingText');
+        function showLoading(text){ if (loadingText) loadingText.innerText = text; if (loadingModal) loadingModal.style.display = 'flex'; }
+        function hideLoading(){ if (loadingModal) loadingModal.style.display = 'none'; }
+
+        if (statusEl) statusEl.innerText = "Processing...";
+        showLoading('Uploading proof…');
+
+        const fd = new FormData();
+        fd.append('fullname', document.getElementById("fullname").value);
+        fd.append('email', document.getElementById("email").value);
+        fd.append('phone', document.getElementById("phone").value);
+        fd.append('amount', document.getElementById("amount").value);
+        // include chosen bank account id if present
+        const bankRadio = document.querySelector('input[name="bank_account_id"]:checked');
+        if (bankRadio) fd.append('bank_account_id', bankRadio.value);
+        const proofFile = document.getElementById('proof').files[0];
+        if (!proofFile) {
+            if (statusEl) statusEl.innerText = 'Please attach a proof of payment file.';
+            hideLoading();
+            return;
+        }
+        fd.append('proof', proofFile);
+
+        try {
+            const resp = await fetch(`${BACKEND_URL}/donate`, {
+                method: "POST",
+                body: fd
+            });
+
+            if (!resp.ok) {
+                const text = await resp.text();
+                if (statusEl) statusEl.innerText = `Error from server: ${resp.status} ${text}`;
+                return;
+            }
+
+            const result = await resp.json();
+            if (result.reference) {
+                if (statusEl) statusEl.innerText = `Donation recorded. Reference: ${result.reference}. ${result.message || ''}`;
+                showLoading('Done');
+                // show 'Done' briefly then hide
+                setTimeout(() => { hideLoading(); }, 1500);
+                // Optionally show instructions or copy reference to clipboard
+                try { navigator.clipboard?.writeText(result.reference); } catch (e) {}
+            } else {
+                if (statusEl) statusEl.innerText = "Error: " + (result.message || 'Unknown error');
+                showLoading('Error');
+                setTimeout(() => { hideLoading(); }, 1500);
+            }
+
+        } catch (err) {
+            if (statusEl) statusEl.innerText = "Network error: " + err.message;
             hideLoading();
         }
     });
 }
-
+      
+ else {
+    console.warn('donationForm not found on page');
+}
 
 // ----------------- LOAD BANK ACCOUNTS FOR DONATION FORM -----------------
 (async function loadAvailableBanks(){
