@@ -19,6 +19,7 @@ const statusDiv = document.getElementById('formStatus');
 if (form) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    
     // simple client-side validation
     const name = form.name.value.trim();
     const email = form.email.value.trim();

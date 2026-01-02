@@ -6,41 +6,25 @@ const form = document.getElementById("donationForm");
 if (form) {
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
-
-
-        // Disable the submit button to prevent double-click
-        const submitButton = form.querySelector('button[type="submit"]');
+          const submitButton = form.querySelector('button[type="submit"]');
         if (submitButton) {
             submitButton.disabled = true;
-            submitButton.innerText = "Processing..."; // optional feedback
-        }
-
-        try {
-            // Your async payment logic here
+            submitButton.innerText = "Processing...";
+        }  try {
             const formData = new FormData(form);
-            const response = await fetch("/your-payment-endpoint", {
+            const response = await fetch("/donate", {
                 method: "POST",
                 body: formData
             });
 
             const result = await response.json();
             console.log(result);
-
-            // You can show a success message or redirect user
+            alert("Payment successful!");
         } catch (error) {
             console.error(error);
-            alert("Payment failed. Please try again.");
-        } finally {
-            // Optionally re-enable button if you want retry on failure
-            if (submitButton) {
-                submitButton.disabled = false;
-                submitButton.innerText = "Pay Now";
-            }
+            alert("Payment failed.");
         }
 
-
-
-        
 
         const statusEl = document.getElementById("status");
         const loadingModal = document.getElementById('loadingModal');
