@@ -285,7 +285,8 @@ try:
 
         # reflect updated names
         db.metadata.clear()
-        db.reflect(bind=db.engine)
+        db.Model.metadata.reflect(db.engine)
+
 except Exception as e:
     app.logger.warning(f"Failed to remap SQLAlchemy tables: {e}")
 
