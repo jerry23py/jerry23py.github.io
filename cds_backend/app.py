@@ -323,53 +323,24 @@ def donate():
     except Exception as e:
         app.logger.error(f"Failed to save proof file: {e}")
         return jsonify({"message": "Failed to save proof file"}), 500
-     # optional: record which bank account donor chose (not required)
+
+    # generate a unique reference
+    reference = uuid.uuid4().hex[:12]
+
+    # optional: record which bank account donor chose (not required)
     bank_account_id = flask_request.form.get('bank_account_id')
     try:
         bank_account_id = int(bank_account_id) if bank_account_id is not None and bank_account_id != '' else None
     except Exception:
         bank_account_id = None
 
-
-    # generate a unique reference
-    reference = f"DON-{uuid.uuid4().hex.upper()}"
-
-   
     # save donor as pending with proof filename in DB
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    
-    try:
-        # 🔐 DUPLICATE CHECK (extra safety)
-        c.execute(
-            f"SELECT 1 FROM {DONATION_TABLE} WHERE reference = ?",
-            (reference,)
-        )
-        if c.fetchone():
-            conn.close()
-            return jsonify({"message": "Duplicate submission detected"}), 409
-        # Save file ONLY after checks
-        filename = secure_filename(proof.filename)
-        stored_name = f"{int(time.time())}_{filename}"
-        save_path = os.path.join(UPLOAD_FOLDER, stored_name)
-        proof.save(save_path)
-
-        c.execute(f"INSERT INTO {DONATION_TABLE} (fullname, phone, amount, reference, proof_filename, status, bank_account_id) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
-                  (fullname, phone, amount, reference, stored_name, bank_account_id))
-        conn.commit()
-    
-    except sqlite3.IntegrityError:
-        conn.rollback()
-        return jsonify({"message": "Duplicate donation rejected"}), 409
-
-    except Exception as e:
-        conn.rollback()
-        app.logger.error(f"Donation error: {e}")
-        return jsonify({"message": "Server error"}), 500
-
-    finally:
-        conn.close()
-  
+    c.execute(f"INSERT INTO {DONATION_TABLE} (fullname, phone, amount, reference, proof_filename, status, bank_account_id) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
+              (fullname, phone, amount, reference, stored_name, bank_account_id))
+    conn.commit()
+    conn.close()
 
     message = (
         "Donation recorded as pending with proof of payment.\n"
