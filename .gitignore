@@ -1,15 +1,42 @@
-# Ignore SQLite databases and local instance files
+# ------------------------------
+# Databases & SQLite
+# ------------------------------
 *.db
+*.sqlite
+*.sqlite3
+*.sqlite-query
+*.sqlite3-query
 instance/
-cds_backend/donations.db
-donations.db
 
-# Python/cache
+# ------------------------------
+# User uploads / generated files
+# ------------------------------
+gallery_images/
+uploads/
+
+# ------------------------------
+# Python cache
+# ------------------------------
 __pycache__/
 *.pyc
+*.pyo
 
-# Environment files
+# ------------------------------
+# Environment variables
+# ------------------------------
 .env
+.env.*
 
-# Node
+# ------------------------------
+# Node / frontend
+# ------------------------------
 node_modules/
+
+# ------------------------------
+# OS / Editor junk
+# ------------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+

@@ -9,13 +9,16 @@ import os
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 from flask import send_from_directory, abort, request as flask_request
-
+import logging
 # token support (URLSafeTimedSerializer works across itsdangerous versions)
 from itsdangerous import URLSafeTimedSerializer as Serializer, BadSignature, SignatureExpired
 
 # Load local .env if present (for local development). The file is gitignored.
 basedir = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(os.path.join(basedir, '.env'))
+
+logging.basicConfig(level=logging.INFO)
+
 
 app = Flask(__name__)
 # Allow CORS for admin routes and public endpoints. Ensure Authorization header is allowed for preflight.
@@ -292,18 +295,53 @@ except Exception as e:
 
 
 # ---------- DONATION ROUTE -----------
+
 @app.route("/donate", methods=["POST"])
 def donate():
+    idempotency_key = flask_request.form.get("idempotency_key", "").strip()
+    if not idempotency_key:
+        return jsonify({"message": "Missing idempotency key"}), 400
+    # Check for existing donation with same idempotency key
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    c.execute(
+        f"SELECT reference FROM {DONATION_TABLE} WHERE idempotency_key=?",
+        (idempotency_key,)
+    )
+    existing = c.fetchone()
+
+    if existing:
+        app.logger.warning(
+            f"[DUPLICATE BLOCKED] key={idempotency_key}, ref={existing[0]}"
+        )
+        conn.close()
+        return jsonify({
+            "message": "This donation was already submitted",
+            "reference": existing[0]
+        }), 409
+   
     # Accept multipart form with a required proof of payment file (field name: 'proof')
     fullname = flask_request.form.get("fullname", "").strip()
     email = flask_request.form.get("email", "").strip()
     phone = flask_request.form.get("phone", "").strip()
+    
 
     try:
         amount = int(float(flask_request.form.get("amount", 0)))
     except Exception:
         return jsonify({"message": "Invalid amount provided"}), 400
+    c.execute(f"""
+    SELECT reference FROM {DONATION_TABLE}
+    WHERE fullname=? AND email=? AND phone=? AND amount=? AND status='pending'
+    """, (fullname, email, phone, amount))
+    existing = c.fetchone()
 
+    if existing:
+        return jsonify({
+            "message": "A donation with these details is already pending",
+            "reference": existing[0]
+        }), 409
     # Validate input
     if not fullname or not email or not amount:
         return jsonify({"message": "Full name, email, and amount are required"}), 400
@@ -326,6 +364,8 @@ def donate():
 
     # generate a unique reference
     reference = uuid.uuid4().hex[:12]
+    
+    
 
     # optional: record which bank account donor chose (not required)
     bank_account_id = flask_request.form.get('bank_account_id')
@@ -337,8 +377,13 @@ def donate():
     # save donor as pending with proof filename in DB
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute(f"INSERT INTO {DONATION_TABLE} (fullname, phone, amount, reference, proof_filename, status, bank_account_id) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
-              (fullname, phone, amount, reference, stored_name, bank_account_id))
+    c.execute(
+    f"INSERT INTO {DONATION_TABLE} (fullname, email, phone, amount, reference, proof_filename, status, bank_account_id, idempotency_key) "
+    "VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
+    (fullname, email, phone, amount, reference, stored_name, bank_account_id, idempotency_key)
+    )
+
+
     conn.commit()
     conn.close()
 
@@ -349,8 +394,6 @@ def donate():
     )
 
     return jsonify({"reference": reference, "message": message}), 201
-
-
 
 # Route to check status
 @app.route("/donation-status/<reference>", methods=["GET"])

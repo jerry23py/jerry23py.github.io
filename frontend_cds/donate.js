@@ -4,50 +4,43 @@ const BACKEND_URL = window.BACKEND_URL || 'http://127.0.0.1:5000';
 
 // ----------------- DONATION FORM SUBMISSION -----------------
 const form = document.getElementById("donationForm");
+function generateUUID() {
+    // Simple UUID v4 generator
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
 
 if (form) {
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
+        const fd = new FormData(form);
 
-        // 🔐 HARD LOCK (DOM-based, not JS variable)
+        // create once per page load
+    if (!form.dataset.idempotencyKey) {
+        form.dataset.idempotencyKey = generateUUID();
+        }
+         // ✅ add idempotency key to FormData
+    fd.set("idempotency_key", form.dataset.idempotencyKey);
+
+    // ... rest of fetch logic
+
+    fd.append("idempotency_key", form.dataset.idempotencyKey);
+
+    
+
+        // 🔐 HARD LOCK
         if (form.dataset.submitted === "true") {
             alert("This donation has already been submitted.");
             return;
         }
-
+        form.dataset.submitted = "true"; // lock immediately
 
         const submitButton = form.querySelector('button[type="submit"]');
         submitButton.disabled = true;
-        submitButton.innerText = "Processing...";
-        
-
-       
-
-        try {
-            const formData = new FormData(form);
-        
-
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.message || "Submission failed");
-            }
-
-            await response.json();
-            alert("Payment successful!");
-
-
-            submitButton.innerText = "Pay Now";
-            submitButton.disabled = false;
-
-        } catch (error) {
-
-            console.error(error);
-            alert("Payment failed.");
-
-        }
- 
-
-
+        submitButton.innerText = "processing...";
 
         const statusEl = document.getElementById("status");
         const loadingModal = document.getElementById('loadingModal');
@@ -58,18 +51,23 @@ if (form) {
         if (statusEl) statusEl.innerText = "Processing...";
         showLoading('Uploading proof…');
 
-        const fd = new FormData();
+        // ✅ fd MUST be created BEFORE fetch
+       
         fd.append('fullname', document.getElementById("fullname").value);
         fd.append('email', document.getElementById("email").value);
         fd.append('phone', document.getElementById("phone").value);
         fd.append('amount', document.getElementById("amount").value);
-        // include chosen bank account id if present
+
         const bankRadio = document.querySelector('input[name="bank_account_id"]:checked');
         if (bankRadio) fd.append('bank_account_id', bankRadio.value);
+
         const proofFile = document.getElementById('proof').files[0];
         if (!proofFile) {
             if (statusEl) statusEl.innerText = 'Please attach a proof of payment file.';
             hideLoading();
+            delete form.dataset.submitted;
+            submitButton.disabled = false;
+            submitButton.innerText = "Pay Now";
             return;
         }
         fd.append('proof', proofFile);
@@ -79,40 +77,60 @@ if (form) {
                 method: "POST",
                 body: fd
             });
-
+            let results;
+            try {
+                results = await resp.json();
+            } catch (err) {
+                 const text = await resp.text();
+                 results = { message: text };
+                }
+           
+            // ✅ Handle 409 Conflict separately
+            if (resp.status === 409) {
+                if (statusEl) statusEl.innerText =
+                `Duplicate donation detected. Reference: ${results.reference}. ${results.message || ''}`;
+                showLoading('Duplicate');
+                setTimeout(() => hideLoading(), 2000);
+                delete form.dataset.submitted;
+                submitButton.disabled = false;
+                submitButton.innerText = "Pay Now";
+                return; // exit the try block
+            }
             if (!resp.ok) {
                 const text = await resp.text();
-                if (statusEl) statusEl.innerText = `Error from server: ${resp.status} ${text}`;
-                return;
+            
+                throw new Error(text || "Submission failed");
             }
-
+            
+                
             const result = await resp.json();
+
             if (result.reference) {
-                if (statusEl) statusEl.innerText = `Donation recorded. Reference: ${result.reference}. ${result.message || ''}`;
+                if (statusEl) statusEl.innerText =
+                    `Donation recorded. Reference: ${result.reference}. ${result.message || ''}`;
                 showLoading('Done');
-                // show 'Done' briefly then hide
-                setTimeout(() => { hideLoading(); }, 1500);
-                // Optionally show instructions or copy reference to clipboard
-                try { navigator.clipboard?.writeText(result.reference); } catch (e) {}
+                setTimeout(() => hideLoading(), 1500);
+                submitButton.innerText = "submitted";
             } else {
-                if (statusEl) statusEl.innerText = "Error: " + (result.message || 'Unknown error');
-                showLoading('Error');
-                setTimeout(() => { hideLoading(); }, 1500);
+                throw new Error(result.message || "Unknown error");
             }
 
         } catch (err) {
-            if (statusEl) statusEl.innerText = "Network error: " + err.message;
+            console.error(err);
+            if (statusEl) statusEl.innerText = "Error: " + err.message;
             hideLoading();
+
+            // 🔓 unlock ONLY on failure
+            delete form.dataset.submitted;
+            submitButton.disabled = false;
+            submitButton.innerText = "Pay Now";
         }
     });
-}
-      
- else {
-    console.warn('donationForm not found on page');
-}
+
+        }
 
 // ----------------- LOAD BANK ACCOUNTS FOR DONATION FORM -----------------
-(async function loadAvailableBanks(){
+(async function loadAvailableBanks(){ 
     const container = document.getElementById('bankAccounts');
     if (!container) return;
     try {
