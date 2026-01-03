@@ -1,6 +1,8 @@
 // Backend URL comes from `frontend_cds/config.js` (window.BACKEND_URL).
 // Fall back to localhost for local development if not provided.
-const BACKEND_URL = window.BACKEND_URL || 'http://127.0.0.1:5000';
+const BACKEND_URL = process.env.NODE_ENV === 'production'
+    ? 'https://jerry23py-github-io.onrender.com'
+    : 'http://127.0.0.1:5000';
 
 // ----------------- DONATION FORM SUBMISSION -----------------
 const form = document.getElementById("donationForm");
