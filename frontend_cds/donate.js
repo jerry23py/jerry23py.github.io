@@ -1,6 +1,6 @@
 // Backend URL comes from `frontend_cds/config.js` (window.BACKEND_URL).
 // Fall back to localhost for local development if not provided.
-const BACKEND_URL = window.BACKEND_URL;
+const BACKEND_URL = window.BACKEND_URL || 'https://antihiv-aids-cds.onrender.com';
 
 // ----------------- DONATION FORM SUBMISSION -----------------
 const form = document.getElementById("donationForm");
