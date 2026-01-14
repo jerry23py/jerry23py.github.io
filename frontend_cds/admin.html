@@ -177,20 +177,24 @@ async function authenticate() {
             headers: { 'Content-Type': 'application/json' }, 
             body: JSON.stringify({ password: passwordInput }) // ✅ correct
         });
+        
+      
 
         if (!resp.ok) {
             loginError.innerText = 'Incorrect password. Try again.';
             return;
         }
-
         const data = await resp.json();
         sessionStorage.setItem('adminAuth', 'true');
         sessionStorage.setItem('adminToken', data.token);
         showAdminPanel();
+        
 
     } catch (err) {
         loginError.innerText = 'Network error: ' + err.message;
-    }
+    }const resp = await fetch(`${BACKEND_URL}/pending-donations`, {
+    headers: { 'Authorization': 'Bearer ' + token }
+});
 }
 // ------------------- PAID MEMBERS -------------------
 function loadPaidMembers() {
