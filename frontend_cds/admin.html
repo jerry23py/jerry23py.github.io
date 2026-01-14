@@ -166,7 +166,7 @@ if (sessionStorage.getItem("adminAuth") === "true") {
 
 // ==================== LOAD DATA ====================
 // Configured API URL (set `window.BACKEND_URL` in `config.js` when deploying).
-const API_URL = window.BACKEND_URL || 'https://jerry23py-github-io.onrender.com';
+const API_URL = window.BACKEND_URL || 'http://127.0.0.1:10000';
 fetch(`${BACKEND_URL}/admin/login`, {
     method: "POST",
     credentials: "include",  // needed for cookies

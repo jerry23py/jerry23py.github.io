@@ -1,8 +1,6 @@
 // Backend URL comes from `frontend_cds/config.js` (window.BACKEND_URL).
 // Fall back to localhost for local development if not provided.
-const BACKEND_URL = process.env.NODE_ENV === 'production'
-    ? 'https://jerry23py-github-io.onrender.com'
-    : 'http://127.0.0.1:5000';
+const BACKEND_URL = window.BACKEND_URL || 'http://127.0.0.1:10000';
 
 // ----------------- DONATION FORM SUBMISSION -----------------
 const form = document.getElementById("donationForm");
@@ -29,7 +27,6 @@ if (form) {
 
     // ... rest of fetch logic
 
-    fd.append("idempotency_key", form.dataset.idempotencyKey);
 
     
 
@@ -75,17 +72,18 @@ if (form) {
         fd.append('proof', proofFile);
 
         try {
-            const resp = await (`${BACKEND_URL}/donate`, {
+            const resp = await fetch (`${BACKEND_URL}/donate`, {
                 method: "POST",
                 body: fd
             });
             let results;
             try {
                 results = await resp.json();
-            } catch (err) {
-                 const text = await resp.text();
-                 results = { message: text };
+            } catch(err) {
+                const text = await resp.text();
+                results = { message: text };
                 }
+
            
             // ✅ Handle 409 Conflict separately
             if (resp.status === 409) {
