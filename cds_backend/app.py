@@ -22,8 +22,7 @@ logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 # Allow CORS for admin routes and public endpoints. Ensure Authorization header is allowed for preflight.
-CORS(app, resources={
-    r"/*": {"origins": "*"}
+CORS(app, resources={ r"/*": {"origins": "https://jerry23py-github-io.onrender.com"}
 }, expose_headers=['Content-Type'], supports_credentials=True, allow_headers=['Content-Type','Authorization','X-ADMIN-KEY','X-ADMIN-NAME'])  # allow CORS for all routes for frontend compatibility (dev)
 
 # Database setup
@@ -74,7 +73,7 @@ with app.app_context():
 
 # Load sensitive config from environment variables
 # ADMIN_SECRET is used as the admin password; set this to a secure value in production
-ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "admin123")
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", 'fallback-password')
 if not os.environ.get("ADMIN_SECRET"):
     app.logger.warning("ADMIN_SECRET not set. Using default insecure admin key; set ADMIN_SECRET in env for production.")
 # Secret key used to sign admin tokens
@@ -913,6 +912,6 @@ def serve_frontend(path):
 
 if __name__ == "__main__":
     # Use PORT env var if provided (useful for hosting platforms)
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
     # Bind to 0.0.0.0 so the service is reachable from outside
     app.run(host="0.0.0.0", port=port, debug=(os.environ.get("FLASK_DEBUG", "False") == "True"))

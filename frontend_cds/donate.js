@@ -75,7 +75,7 @@ if (form) {
         fd.append('proof', proofFile);
 
         try {
-            const resp = await fetch(`${BACKEND_URL}/donate`, {
+            const resp = await (`${BACKEND_URL}/donate`, {
                 method: "POST",
                 body: fd
             });

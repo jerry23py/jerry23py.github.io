@@ -3,7 +3,7 @@
 
 // Backend API base URL (e.g. 'https://api.example.com').
 // Default is localhost for local development.
-window.BACKEND_URL = window.BACKEND_URL || 'http://127.0.0.1:5000';
+window.BACKEND_URL = window.BACKEND_URL || 'http://127.0.0.1:10000';
 
 // Admin password for client-side auth (ONLY for simple local protection).
 // For production, use server-side authentication and DO NOT store secrets in frontend files.
