@@ -166,17 +166,33 @@ if (sessionStorage.getItem("adminAuth") === "true") {
 
 // ==================== LOAD DATA ====================
 // Configured API URL (set `window.BACKEND_URL` in `config.js` when deploying).
-const API_URL = window.BACKEND_URL || 'http://127.0.0.1:10000';
-fetch(`${BACKEND_URL}/admin/login`, {
-    method: "POST",
-    credentials: "include",  // needed for cookies
-    headers: {
-        "Content-Type": "application/json",
-        "X-ADMIN-KEY": "admin123"
-    },
-    body: JSON.stringify({username, password})
-});
+const API_URL = window.BACKEND_URL || 'https://antihiv-aids-cds.onrender.com';
+async function authenticate() {
+    const passwordInput = document.getElementById("passwordInput").value;
+    const loginError = document.getElementById("loginError");
 
+    try {
+        const resp = await fetch(`${API_URL}/admin/login`, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ password: passwordInput }) // ✅ correct
+        });
+
+        if (!resp.ok) {
+            loginError.innerText = 'Incorrect password. Try again.';
+            return;
+        }
+
+        const data = await resp.json();
+        sessionStorage.setItem('adminAuth', 'true');
+        sessionStorage.setItem('adminToken', data.token);
+        showAdminPanel();
+
+    } catch (err) {
+        loginError.innerText = 'Network error: ' + err.message;
+    }
+}
+// ------------------- PAID MEMBERS -------------------
 function loadPaidMembers() {
     fetch(`${API_URL}/paid-users`)
         .then(res => {
