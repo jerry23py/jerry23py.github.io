@@ -3,11 +3,11 @@
 
 // Backend API base URL (e.g. 'https://api.example.com').
 // Default is localhost for local development.
-window.BACKEND_URL = window.BACKEND_URL || 'http://127.0.0.1:10000';
+window.BACKEND_URL = window.BACKEND_URL || 'https://antihiv-aids-cds.onrender.com';
 
 // Admin password for client-side auth (ONLY for simple local protection).
 // For production, use server-side authentication and DO NOT store secrets in frontend files.
-window.ADMIN_PASSWORD = window.ADMIN_PASSWORD || 'admin123';
+window.ADMIN_PASSWORD = window.ADMIN_PASSWORD || 'SuperSecret123';
 
 // Notes:
 // - When you deploy your backend, update BACKEND_URL to the deployed HTTPS URL.

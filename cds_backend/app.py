@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 # Allow CORS for admin routes and public endpoints. Ensure Authorization header is allowed for preflight.
-CORS(app, resources={ r"/*": {"origins": "https://jerry23py-github-io.onrender.com"}
+CORS(app, resources={ r"/*": {"origins": "https://antihiv-aids-cds.onrender.com"}
 }, expose_headers=['Content-Type'], supports_credentials=True, allow_headers=['Content-Type','Authorization','X-ADMIN-KEY','X-ADMIN-NAME'])  # allow CORS for all routes for frontend compatibility (dev)
 
 # Database setup
