@@ -72,18 +72,19 @@ if (form) {
         fd.append('proof', proofFile);
 
         try {
-            const resp = await fetch (`${BACKEND_URL}/donate`, {
-                method: "POST",
-                body: fd
-            });
+            const resp = await fetch(`${BACKEND_URL}/donate`, {
+            method: "POST",
+            body: fd
+            });         
+            const contentType = resp.headers.get("content-type") || "";
             let results;
-            try {
-                results = await resp.json();
-            } catch(err) {
-                const text = await resp.text();
-                results = { message: text };
-                }
 
+            if (contentType.includes("application/json")) {
+                results = await resp.json();   // ✅ read once
+            } else {
+                const text = await resp.text(); // ✅ read once
+                results = { message: text };
+            }
            
             // ✅ Handle 409 Conflict separately
             if (resp.status === 409) {
