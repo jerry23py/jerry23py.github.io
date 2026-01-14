@@ -72,10 +72,10 @@ with app.app_context():
 # Admin configuration for donation validation
 
 # Load sensitive config from environment variables
-# ADMIN_SECRET is used as the admin password; set this to a secure value in production
-ADMIN_SECRET = os.environ.get("ADMIN_SECRET", 'fallback-password')
-if not os.environ.get("ADMIN_SECRET"):
-    app.logger.warning("ADMIN_SECRET not set. Using default insecure admin key; set ADMIN_SECRET in env for production.")
+# ADMIN_PASSWORD is used as the admin password; set this to a secure value in production
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+if not os.environ.get("ADMIN_PASSWORD"):
+    app.logger.warning("ADMIN_PASSWORD not set. Using default insecure admin key; set ADMIN_PASSWORD in env for production.")
 # Secret key used to sign admin tokens
 SECRET_KEY = os.environ.get("SECRET_KEY") or os.environ.get("FLASK_SECRET") or (os.urandom(24).hex())
 # token expiry in seconds
@@ -115,7 +115,7 @@ def is_admin_authorized(req):
         token = auth.split(' ', 1)[1].strip()
         return verify_admin_token(token)
     legacy = req.headers.get('X-ADMIN-KEY', '')
-    if legacy and legacy == ADMIN_SECRET:
+    if legacy and legacy == ADMIN_PASSWORD:
         return True
     # allow token via query param for anchor links
     t = req.args.get('token')
@@ -851,7 +851,7 @@ def admin_login():
     data = request.get_json() or {}
     password = data.get('password', '')
     username = data.get('username', None)
-    if password != ADMIN_SECRET:
+    if password != ADMIN_PASSWORD:
         return jsonify({'message': 'Unauthorized'}), 401
     token = generate_admin_token(name=username)
     return jsonify({'token': token, 'expires_in': ADMIN_TOKEN_EXPIRY}), 200
