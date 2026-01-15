@@ -4,3 +4,5 @@ Flask_Cors
 requests
 gunicorn
 python-dotenv
+pg8000==1.30.3
+psycopg2-binary==2.9.9
