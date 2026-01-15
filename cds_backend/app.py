@@ -30,6 +30,12 @@ app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.environ.get('DONATIONS_D
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 
 # Database Model
 class Donation(db.Model):
@@ -131,11 +137,11 @@ def allowed_file(filename):
 
 def create_table():
     # Ensure existing DB (created by SQLAlchemy) has the new columns we need.
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()    
     c = conn.cursor()
 
-    # For compatibility, check the SQLAlchemy table name 'donation'
-    c.execute("PRAGMA table_info(donation)")
+    # For compatibility, check the SQLAlchemy table name 'donations'
+    c.execute("PRAGMA table_info(donations)")
     cols = [r[1] for r in c.fetchall()]
     # Some older DBs may have used the plural table name 'donations' or 'images'. If so, rename them to the
     # singular table names used by the current models so our SQL queries keep working.
@@ -143,8 +149,8 @@ def create_table():
         c.execute("PRAGMA table_info(donations)")
         if c.fetchall():
             # rename legacy plural table to singular
-            c.execute("ALTER TABLE donations RENAME TO donation")
-            c.execute("PRAGMA table_info(donation)")
+            c.execute("ALTER TABLE donations RENAME TO donations")
+            c.execute("PRAGMA table_info(donations)")
             cols = [r[1] for r in c.fetchall()]
 
     # If the table doesn't exist at all, let SQLAlchemy create tables later (db.create_all was already called above),
@@ -219,11 +225,11 @@ def log_request_info():
         pass
 
 # Determine the actual table names used on disk (support legacy plural table names)
-conn = sqlite3.connect(DB_PATH)
+conn = get_db()
 c = conn.cursor()
-c.execute("PRAGMA table_info(donation)")
+c.execute("PRAGMA table_info(donations)")
 if c.fetchall():
-    DONATION_TABLE = 'donation'
+    DONATION_TABLE = 'donations'
 else:
     c.execute("PRAGMA table_info(donations)")
     if c.fetchall():
@@ -231,13 +237,13 @@ else:
         try:
             c.execute("ALTER TABLE donations RENAME TO donation")
             conn.commit()
-            DONATION_TABLE = 'donation'
+            DONATION_TABLE = 'donations'
         except Exception:
             # If rename fails, fall back to plural name
             DONATION_TABLE = 'donations'
     else:
         # default to singular (will be created by SQLAlchemy later)
-        DONATION_TABLE = 'donation'
+        DONATION_TABLE = 'donations'
 
 c.execute("PRAGMA table_info(image)")
 if c.fetchall():
@@ -301,7 +307,7 @@ def donate():
     if not idempotency_key:
         return jsonify({"message": "Missing idempotency key"}), 400
     # Check for existing donation with same idempotency key
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()   
     c = conn.cursor()
 
     c.execute(
@@ -374,7 +380,7 @@ def donate():
         bank_account_id = None
 
     # save donor as pending with proof filename in DB
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()    
     c = conn.cursor()
     c.execute(
     f"INSERT INTO {DONATION_TABLE} (fullname, email, phone, amount, reference, proof_filename, status, bank_account_id, idempotency_key) "
@@ -398,7 +404,7 @@ def donate():
 @app.route("/donation-status/<reference>", methods=["GET"])
 def donation_status(reference):
     # Use direct SQL so we are tolerant of legacy/plural table names and schema differences
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db() 
     c = conn.cursor()
     c.execute(f"SELECT fullname, amount, status, reference, approved_by, approved_at, bank_account_id FROM {DONATION_TABLE} WHERE reference=?", (reference,))
     row = c.fetchone()
@@ -413,7 +419,7 @@ def donation_status(reference):
     if bank_account_id:
         try:
             # use a fresh connection for the bank account lookup to avoid reusing closed cursor
-            c2_conn = sqlite3.connect(DB_PATH)
+            c2_conn = get_db()            
             c2 = c2_conn.cursor()
             c2.execute(f"SELECT id, bank_name, account_name, account_number, bank_type FROM {BANK_ACCOUNT_TABLE} WHERE id=?", (bank_account_id,))
             br = c2.fetchone()
@@ -440,7 +446,7 @@ def pending_donations():
     if not is_admin_authorized(request):
         return jsonify({"message": "Unauthorized"}), 401
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()  
     c = conn.cursor()
     c.execute(f"SELECT fullname, phone, amount, reference, status, proof_filename, approved_by, approved_at, bank_account_id FROM {DONATION_TABLE} WHERE status='pending'")
     rows = c.fetchall()
@@ -475,7 +481,7 @@ def validate_donation():
     if not reference:
         return jsonify({"message": "Reference required"}), 400
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()   
     c = conn.cursor()
     # only update if not already paid
     # determine admin name (if available in token payload or header)
@@ -517,7 +523,7 @@ def admin_reset_donations():
     if not is_admin_authorized(request):
         return jsonify({"message": "Unauthorized"}), 401
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()   
     c = conn.cursor()
     c.execute(f"SELECT proof_filename FROM {DONATION_TABLE} WHERE proof_filename IS NOT NULL")
     rows = c.fetchall()
@@ -558,7 +564,7 @@ def admin_bank_accounts():
     if request.method == 'GET':
         if not is_admin_authorized(request):
             return jsonify({"message": "Unauthorized"}), 401
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()        
         c = conn.cursor()
         c.execute(f"SELECT id, bank_name, account_name, account_number, bank_type, active, created_at FROM {BANK_ACCOUNT_TABLE} ORDER BY created_at DESC")
         rows = c.fetchall()
@@ -593,7 +599,7 @@ def admin_bank_accounts():
             return jsonify({"message": "bank_name, account_name and account_number are required"}), 400
         try:
             app.logger.info(f"DB path: {DB_PATH}; exists={os.path.exists(DB_PATH)}; cwd={os.getcwd()}")
-            conn = sqlite3.connect(DB_PATH)
+            conn = get_db()         
             c = conn.cursor()
             app.logger.info(f"Executing insert into {BANK_ACCOUNT_TABLE}")
             c.execute(f"INSERT INTO {BANK_ACCOUNT_TABLE} (bank_name, account_name, account_number, bank_type, active, created_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -640,7 +646,7 @@ def admin_bank_account_item(acc_id):
 
     if request.method == 'DELETE':
         try:
-            conn = sqlite3.connect(DB_PATH)
+            conn = get_db()          
             c = conn.cursor()
             c.execute(f"DELETE FROM {BANK_ACCOUNT_TABLE} WHERE id = ?", (acc_id,))
             deleted = c.rowcount
@@ -678,7 +684,7 @@ def admin_bank_account_item(acc_id):
             return jsonify({"message": "No fields to update"}), 400
         params.append(acc_id)
         try:
-            conn = sqlite3.connect(DB_PATH)
+            conn = get_db()           
             c = conn.cursor()
             c.execute(f"UPDATE {BANK_ACCOUNT_TABLE} SET {', '.join(fields)} WHERE id = ?", params)
             conn.commit()
@@ -702,7 +708,7 @@ def admin_bank_account_item(acc_id):
 @app.route('/bank-accounts/', methods=['GET'])
 def list_bank_accounts():
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()      
         c = conn.cursor()
         c.execute(f"SELECT id, bank_name, account_name, account_number, bank_type FROM {BANK_ACCOUNT_TABLE} WHERE active=1 ORDER BY created_at DESC")
         rows = c.fetchall()
@@ -721,7 +727,7 @@ def admin_debug_db():
         return jsonify({"message": "Unauthorized"}), 401
     try:
         info = {"cwd": os.getcwd(), "db_path": DB_PATH, "db_exists": os.path.exists(DB_PATH)}
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()     
         c = conn.cursor()
         try:
             c.execute(f"SELECT COUNT(*) FROM {BANK_ACCOUNT_TABLE}")
@@ -759,7 +765,7 @@ def upload_image():
 
     uploaded_urls = []
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()  
     c = conn.cursor()
 
     for f in files:
@@ -799,7 +805,7 @@ def upload_image():
 
 @app.route('/gallery', methods=['GET'])
 def gallery_list():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()   
     c = conn.cursor()
     # order by taken_at desc (if set) then title
     c.execute(f"SELECT id, filename, title, taken_at, uploaded_at FROM {IMAGE_TABLE} ORDER BY taken_at DESC, title ASC")
@@ -850,10 +856,10 @@ def protected_proof(filename):
 def admin_login():
     data = request.get_json() or {}
     password = data.get('password', '')
-    username = data.get('username', None)
+    
     if password != ADMIN_PASSWORD:
         return jsonify({'message': 'Unauthorized'}), 401
-    token = generate_admin_token(name=username)
+    token = generate_admin_token(name="admin")
     return jsonify({'token': token, 'expires_in': ADMIN_TOKEN_EXPIRY}), 200
 
 
@@ -864,7 +870,7 @@ def download_csv():
         return jsonify({"message": "Unauthorized"}), 401
     import csv
     from io import StringIO
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()  
     c = conn.cursor()
     c.execute(f"SELECT fullname, phone, amount, reference, status FROM {DONATION_TABLE}")
     rows = c.fetchall()
