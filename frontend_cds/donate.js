@@ -104,7 +104,7 @@ if (form) {
             }
             
                 
-            const result = await resp.json();
+            
 
             if (result.reference) {
                 if (statusEl) statusEl.innerText =
