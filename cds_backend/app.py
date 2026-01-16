@@ -255,6 +255,23 @@ def donation_status(reference):
             }
     
     return jsonify(result)
+@app.route('/admin/reset-donations', methods=['POST'])
+def reset_donations():
+    if not is_admin_authorized(request):
+        return jsonify({"message": "Unauthorized"}), 401
+
+    try:
+        # delete all donations
+        deleted_rows = Donation.query.delete()
+        db.session.commit()
+
+        return jsonify({
+            "message": "Reset successful",
+            "deleted_rows": deleted_rows
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/pending-donations", methods=["GET"])
