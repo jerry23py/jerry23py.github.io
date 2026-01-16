@@ -83,6 +83,8 @@ class Image(db.Model):
     __tablename__ = 'images'
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
+    url = db.Column(db.String(500), nullable=True)        # to store cloudinary url
+    public_id = db.Column(db.String(255), nullable=True)  # to store cloudinary public_id
     title = db.Column(db.String(255), nullable=True)
     taken_at = db.Column(db.DateTime, nullable=True)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -483,21 +485,28 @@ def upload_image():
             continue
 
         # Upload directly to Cloudinary
-        result = cloudinary.uploader.upload(
-            f,
-            folder="gallery",
-            resource_type="image"
-        )
+        try: 
+            result = cloudinary.uploader.upload(
+                f,
+                folder="gallery",
+                resource_type="image"
+            )
 
-        image = Image(
-            url=result['secure_url'],          # CDN URL
-            public_id=result['public_id'],     # for future delete
-            title=album_title,
-            taken_at=datetime.fromisoformat(album_date) if album_date else None
-        )
+            image = Image(
+                filename=f.filename,
+                url=result['secure_url'],          # CDN URL
+                public_id=result['public_id'],     # for future delete
+                title=album_title,
+                taken_at=datetime.fromisoformat(album_date) if album_date else None
+            )
 
-        db.session.add(image)
-        uploaded_urls.append(result['secure_url'])
+            db.session.add(image)
+            uploaded_urls.append(result['secure_url'])
+        except Exception as e:
+            app.logger.error(f"Upload or DB insert failed for file {f.filename}: {e}")
+            continue
+        
+        
 
     db.session.commit()
     
