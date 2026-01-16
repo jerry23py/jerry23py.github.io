@@ -535,7 +535,7 @@ def gallery_list():
         'title': img.title,
         'taken_at': img.taken_at.isoformat() if img.taken_at else None,
         'uploaded_at': img.uploaded_at.isoformat(),
-        'url': f"{base}/gallery-image/{img.filename}"
+        'url': img.url  # Using the Cloudinary CDN URL
     } for img in images])
 
 
