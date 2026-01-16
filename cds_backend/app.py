@@ -15,9 +15,9 @@ import cloudinary.uploader
 import cloudinary.api
 
 cloudinary.config(
-    cloud_name=os.getenv("dvxvfukd0"),
-    api_key=os.getenv("765575621829511"),
-    api_secret=os.getenv("MRqN3WA3lYjCKL99O6ZDD_PwakI"),
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
     secure=True
 )
 
@@ -477,7 +477,9 @@ def upload_image():
 
     album_title = request.form.get('album_title', '')
     album_date = request.form.get('album_date')
-
+    app.logger.info(f"Request files: {request.files}")
+    app.logger.info(f"Request form: {request.form}")
+   
     uploaded_urls = []
 
     for f in files:
