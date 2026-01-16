@@ -56,7 +56,7 @@
     <p style="color: #666; font-size: 0.9em;">
     </p>
 
-    <a id="downloadBtn" href="#">Download CSV</a>
+    <a id="downloadBtn" href="#" onclick="downloadCSV()">Download CSV</a>
     <button id="resetDbBtn" style="background:#ff6b6b;color:#fff;margin-left:12px;padding:10px 14px;border-radius:5px;border:none;cursor:pointer;" onclick="resetDonations()">Reset Donations DB</button>
 
     <h3 style="margin-top:20px">Pending Donations</h3>
@@ -122,22 +122,40 @@
 // ==================== AUTHENTICATION ====================
 // Now using server-side admin authentication via /admin/login
 const ADMIN_PASSWORD = window.ADMIN_PASSWORD || "admin123"; // only used as fallback for older clients
+// Configured API URL (set `window.BACKEND_URL` in `config.js` when deploying).
+const API_URL = window.BACKEND_URL || 'https://antihiv-aids-cds.onrender.com';
+function getToken() {
+    return sessionStorage.getItem('adminToken');
+}
 
+function isLoggedIn() {
+    return sessionStorage.getItem("adminAuth") === "true" && getToken();
+}
+
+// ==================== AUTHENTICATION ====================
 async function authenticate() {
     const passwordInput = document.getElementById("passwordInput").value;
     const loginError = document.getElementById("loginError");
 
     try {
-        const resp = await fetch(`${API_URL}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: passwordInput })});
+        const resp = await fetch(`${API_URL}/admin/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: passwordInput })
+        });
+
         if (!resp.ok) {
             loginError.innerText = 'Incorrect password. Try again.';
             return;
         }
+
         const data = await resp.json();
-        // Store token in sessionStorage
+
         sessionStorage.setItem('adminAuth', 'true');
         sessionStorage.setItem('adminToken', data.token);
+
         showAdminPanel();
+
     } catch (err) {
         loginError.innerText = 'Network error: ' + err.message;
     }
@@ -146,56 +164,32 @@ async function authenticate() {
 function logout() {
     sessionStorage.removeItem("adminAuth");
     sessionStorage.removeItem("adminToken");
+
     document.getElementById("loginBox").style.display = "block";
     document.getElementById("adminContent").style.display = "none";
     document.getElementById("passwordInput").value = "";
 }
 
+// ==================== PANEL ====================
 function showAdminPanel() {
     document.getElementById("loginBox").style.display = "none";
     document.getElementById("adminContent").style.display = "block";
+
     loadPendingDonations();
     loadPaidMembers();
     loadBankAccounts();
 }
 
-// Check if user is already authenticated (from previous session in same tab)
-if (sessionStorage.getItem("adminAuth") === "true") {
+// Auto login if still valid in this tab
+if (isLoggedIn()) {
     showAdminPanel();
 }
 
+
 // ==================== LOAD DATA ====================
-// Configured API URL (set `window.BACKEND_URL` in `config.js` when deploying).
-const API_URL = window.BACKEND_URL || 'https://antihiv-aids-cds.onrender.com';
-async function authenticate() {
-    const passwordInput = document.getElementById("passwordInput").value;
-    const loginError = document.getElementById("loginError");
 
-    try {
-        const resp = await fetch(`${API_URL}/admin/login`, { 
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify({ password: passwordInput }) // ✅ correct
-        });
-        
-      
 
-        if (!resp.ok) {
-            loginError.innerText = 'Incorrect password. Try again.';
-            return;
-        }
-        const data = await resp.json();
-        sessionStorage.setItem('adminAuth', 'true');
-        sessionStorage.setItem('adminToken', data.token);
-        showAdminPanel();
-        
 
-    } catch (err) {
-        loginError.innerText = 'Network error: ' + err.message;
-    }const resp = await fetch(`${BACKEND_URL}/pending-donations`, {
-    headers: { 'Authorization': 'Bearer ' + token }
-});
-}
 // ------------------- PAID MEMBERS -------------------
 function loadPaidMembers() {
     fetch(`${API_URL}/paid-users`)
@@ -233,9 +227,10 @@ function loadPaidMembers() {
 
 // ------------------- PENDING DONATIONS -------------------
 function loadPendingDonations() {
+  
     const token = sessionStorage.getItem('adminToken');
     if (!token) { document.getElementById('errorMsg').innerText = 'Not authenticated'; return; }
-    fetch(`${API_URL}/pending-donations`, { headers: { 'Authorization': 'Bearer ' + token } })
+     fetch(`${API_URL}/pending-donations`, { headers: { 'Authorization': 'Bearer ' + token } })
         .then(res => {
             if (!res.ok) throw new Error(`Server error: ${res.status}`);
             return res.json();
@@ -344,7 +339,7 @@ function resetDonations() {
     if (!token) { alert('Not authenticated'); return; }
     const btn = document.getElementById('resetDbBtn');
     btn.disabled = true; btn.innerText = 'Resetting...';
-    fetch(`${API_URL}/admin/reset-donations`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+    fetch(`${API_URL}/admin/reset-donations`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() } })
         .then(res => res.json())
         .then(j => {
             alert(`Reset complete. deleted_rows: ${j.deleted_rows || 0}, deleted_files: ${j.deleted_files || 0}`);

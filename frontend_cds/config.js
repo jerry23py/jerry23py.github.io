@@ -7,7 +7,7 @@ window.BACKEND_URL = window.BACKEND_URL || 'https://antihiv-aids-cds.onrender.co
 
 // Admin password for client-side auth (ONLY for simple local protection).
 // For production, use server-side authentication and DO NOT store secrets in frontend files.
-window.ADMIN_PASSWORD = window.ADMIN_PASSWORD || 'SuperSecret123';
+window.ADMIN_PASSWORD = window.ADMIN_PASSWORD || 'admin123';
 
 // Notes:
 // - When you deploy your backend, update BACKEND_URL to the deployed HTTPS URL.
