@@ -6,4 +6,3 @@ gunicorn
 python-dotenv
 psycopg2-binary
 cloudinary
-cloudinary_storage
