@@ -215,9 +215,45 @@ function loadPaidMembers() {
             });
 
             // Enable CSV download
-            const downloadBtn = document.getElementById("downloadBtn");
-            downloadBtn.href = `${API_URL}/download-csv`;
-            downloadBtn.style.pointerEvents = 'auto';
+          const downloadBtn = document.getElementById("downloadBtn");
+
+            downloadBtn.onclick = async (e) => {
+                e.preventDefault();
+
+                const token = getToken();
+                if (!token) {
+                    alert("Not authenticated");
+                    return;
+                }
+
+                try {
+                    const res = await fetch(`${API_URL}/download-csv`, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': 'Bearer ' + token
+                        }
+                    });
+
+                    if (!res.ok) {
+                        const text = await res.text();
+                        throw new Error(`HTTP ${res.status}: ${text}`);
+                    }
+
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'donations.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+
+                    window.URL.revokeObjectURL(url);
+                } catch (err) {
+                    alert('CSV download failed: ' + err.message);
+                }
+            };
         })
         .catch(err => {
             const errorDiv = document.getElementById("errorMsg");
@@ -334,23 +370,33 @@ async function uploadImage() {
 
 // --------- RESET DB -------------
 function resetDonations() {
-    if (!confirm('Are you sure you want to delete all donations and uploaded proofs? This cannot be undone.')) return;
-    const token = sessionStorage.getItem('adminToken');
-    if (!token) { alert('Not authenticated'); return; }
-    const btn = document.getElementById('resetDbBtn');
-    btn.disabled = true; btn.innerText = 'Resetting...';
-    fetch(`${API_URL}/admin/reset-donations`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() } })
-        .then(res => res.json())
-        .then(j => {
-            alert(`Reset complete. deleted_rows: ${j.deleted_rows || 0}, deleted_files: ${j.deleted_files || 0}`);
-            loadPendingDonations();
-            loadPaidMembers();
-            loadBankAccounts();
-        }).catch(err => {
-            alert('Reset failed: ' + err.message);
-        }).finally(() => {
-            btn.disabled = false; btn.innerText = 'Reset Donations DB';
+    fetch(`${API_URL}/admin/reset-donations`, {
+    method: 'POST',
+    headers: {
+        'Authorization': 'Bearer ' + getToken()
+    }
+})
+.then(res => {
+    if (!res.ok) {
+        return res.text().then(t => {
+            throw new Error(`HTTP ${res.status}: ${t.slice(0, 100)}`);
         });
+    }
+    return res.json();
+})
+.then(j => {
+    alert(`Reset complete. deleted_rows: ${j.deleted_rows || 0}, deleted_files: ${j.deleted_files || 0}`);
+    loadPendingDonations();
+    loadPaidMembers();
+    loadBankAccounts();
+})
+.catch(err => {
+    alert('Reset failed: ' + err.message);
+})
+.finally(() => {
+    btn.disabled = false;
+    btn.innerText = 'Reset Donations DB';
+});
 }
 
 // ----------------- BANK ACCOUNTS (ADMIN) -----------------
