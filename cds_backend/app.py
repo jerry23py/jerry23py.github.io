@@ -554,6 +554,32 @@ def protected_proof(filename):
     
     return send_from_directory(UPLOAD_FOLDER, safe)
 
+@app.route('/admin/delete-image/<int:image_id>', methods=['DELETE'])
+def admin_delete_image(image_id):
+    # Check if admin authorized via your helper function
+    if not is_admin_authorized(request):
+        return jsonify({"message": "Unauthorized"}), 401
+
+    # Get image record from DB
+    image = Image.query.get(image_id)
+    if not image:
+        return jsonify({"message": "Image not found"}), 404
+
+    try:
+        # Delete image from Cloudinary if public_id is stored (adjust if you store it)
+        if hasattr(image, 'public_id') and image.public_id:
+            cloudinary.uploader.destroy(image.public_id)
+        
+        # Delete from database
+        db.session.delete(image)
+        db.session.commit()
+
+        return jsonify({"message": "Image deleted successfully"}), 200
+
+    except Exception as e:
+        app.logger.error(f"Failed to delete image {image_id}: {e}")
+        db.session.rollback()
+        return jsonify({"message": "Failed to delete image", "error": str(e)}), 500
 
 @app.route('/admin/login', methods=['POST'])
 def admin_login():

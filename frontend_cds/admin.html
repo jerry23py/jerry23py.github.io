@@ -58,7 +58,7 @@
 
     <a id="downloadBtn" href="#" onclick="downloadCSV()">Download CSV</a>
     <button id="resetDbBtn" style="background:#ff6b6b;color:#fff;margin-left:12px;padding:10px 14px;border-radius:5px;border:none;cursor:pointer;" onclick="resetDonations()">Reset Donations DB</button>
-
+    <button onclick="deleteImage(imageId)">Delete</button>
     <h3 style="margin-top:20px">Pending Donations</h3>
     <table>
         <thead>
@@ -461,6 +461,36 @@ async function addBankAccount() {
         loadBankAccounts();
     } catch (err) { alert('Add failed: ' + err.message); }
 }
+ //Example delete button for an image with ID stored in a variable `imageId` 
+  async function deleteImage(imageId) {
+    const token = localStorage.getItem('adminToken'); // or wherever you keep your admin token
+
+    if (!token) {
+      alert("Please login as admin first.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`/admin/delete-image/${imageId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (res.ok) {
+        alert('Image deleted successfully.');
+        const elem = document.getElementById(`image-${imageId}`);
+        if (elem) elem.remove();
+      } else {
+        const error = await res.json();
+        alert('Delete failed: ' + (error.message || res.statusText));
+      }
+    } catch (e) {
+      alert('Network error: ' + e.message);
+    }
+  }
+
 
 async function deleteBank(id) {
     if (!confirm('Delete this bank account?')) return;
