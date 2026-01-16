@@ -76,6 +76,7 @@ if (form) {
             method: "POST",
             body: fd
             });         
+
             const contentType = resp.headers.get("content-type") || "";
             let results;
 
@@ -106,14 +107,14 @@ if (form) {
                 
             
 
-            if (result.reference) {
+            if (results.reference) {
                 if (statusEl) statusEl.innerText =
-                    `Donation recorded. Reference: ${result.reference}. ${result.message || ''}`;
+                    `Donation recorded. Reference: ${results.reference}. ${results.message || ''}`;
                 showLoading('Done');
                 setTimeout(() => hideLoading(), 1500);
                 submitButton.innerText = "submitted";
             } else {
-                throw new Error(result.message || "Unknown error");
+                throw new Error(results.message || "Unknown error");
             }
 
         } catch (err) {
