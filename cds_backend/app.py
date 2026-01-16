@@ -10,6 +10,16 @@ from werkzeug.utils import secure_filename
 from flask import send_from_directory, abort
 import logging
 from itsdangerous import URLSafeTimedSerializer as Serializer, BadSignature, SignatureExpired
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
+
+cloudinary.config(
+    cloud_name=os.getenv("dvxvfukd0"),
+    api_key=os.getenv("765575621829511"),
+    api_secret=os.getenv("MRqN3WA3lYjCKL99O6ZDD_PwakI"),
+    secure=True
+)
 
 # Load environment variables
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -455,41 +465,40 @@ def list_bank_accounts():
 @app.route('/upload-image', methods=['POST'])
 def upload_image():
     files = request.files.getlist('file')
-    
-    if not files or len(files) == 0:
-        return jsonify({'message': 'No file part in request'}), 400
-    
+
+    if not files:
+        return jsonify({'message': 'No files uploaded'}), 400
+
     album_title = request.form.get('album_title', '')
-    album_date = request.form.get('album_date', None)
-    
+    album_date = request.form.get('album_date')
+
     uploaded_urls = []
-    
+
     for f in files:
         if not f or f.filename == '':
             continue
-        
+
         if not allowed_file(f.filename):
             app.logger.warning(f"Skipped unsupported file: {f.filename}")
             continue
-        
-        filename = secure_filename(f.filename)
-        prefix = str(int(time.time()))
-        stored_name = f"{prefix}_{filename}"
-        save_path = os.path.join(UPLOAD_FOLDER, stored_name)
-        f.save(save_path)
-        
+
+        # Upload directly to Cloudinary
+        result = cloudinary.uploader.upload(
+            f,
+            folder="gallery",
+            resource_type="image"
+        )
+
         image = Image(
-            filename=stored_name,
+            url=result['secure_url'],          # CDN URL
+            public_id=result['public_id'],     # for future delete
             title=album_title,
             taken_at=datetime.fromisoformat(album_date) if album_date else None
         )
-        
+
         db.session.add(image)
-        
-        base = request.host_url.rstrip('/')
-        url = f"{base}/gallery-image/{stored_name}"
-        uploaded_urls.append(url)
-    
+        uploaded_urls.append(result['secure_url'])
+
     db.session.commit()
     
     if len(uploaded_urls) == 0:
@@ -523,7 +532,11 @@ def serve_gallery_image(filename):
     full = os.path.join(UPLOAD_FOLDER, safe)
     
     if not os.path.exists(full):
-        abort(404)
+        return send_from_directory(
+        os.path.join(app.root_path, 'static'),
+        'image-missing.png'
+    )
+
     
     return send_from_directory(UPLOAD_FOLDER, safe)
 
