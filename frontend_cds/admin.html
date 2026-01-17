@@ -169,6 +169,12 @@ async function authenticate() {
     const passwordInput = document.getElementById("passwordInput").value;
     const loginError = document.getElementById("loginError");
 
+    // Suppress console output to hide 401 errors from attackers
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    console.error = () => {};
+    console.warn = () => {};
+
     try {
         const resp = await fetch(`${API_URL}/admin/login`, {
             method: 'POST',
@@ -178,6 +184,8 @@ async function authenticate() {
 
         if (!resp.ok) {
             loginError.innerText = 'Incorrect password. Try again.';
+            console.error = originalError;
+            console.warn = originalWarn;
             return;
         }
 
@@ -186,12 +194,15 @@ async function authenticate() {
         sessionStorage.setItem('adminAuth', 'true');
         sessionStorage.setItem('adminToken', data.token);
 
+        console.error = originalError;
+        console.warn = originalWarn;
         showAdminPanel();
 
     } catch (err) {
-        // Don't expose error details in console or UI
+        // Don't expose error details
         loginError.innerText = 'Login failed. Please try again.';
-        // Silently log to console (won't help attackers)
+        console.error = originalError;
+        console.warn = originalWarn;
     }
 }
 
