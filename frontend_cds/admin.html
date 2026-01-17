@@ -374,8 +374,18 @@ async function uploadImage() {
     try {
         statusEl.innerText = `Uploading ${fileEl.files.length} file(s)...`;
         const resp = await fetch(`${API_URL}/upload-image`, { method: 'POST', body: fd });
-        const result = await resp.json();
-        if (!resp.ok) { statusEl.innerText = 'Upload failed: ' + (result.message || resp.status); return; }
+        const text = await resp.text();
+
+        let result;
+        try {
+            result = JSON.parse(text);
+        } catch (e) {
+            statusEl.innerText = 'Server error (not JSON):\n' + text.slice(0, 200);
+            return;
+}
+        if (!resp.ok) { 
+            statusEl.innerText = 'Upload failed: ' + (result.message || resp.status);
+             return; }
 
         // result may contain 'urls' array or single 'url'
         let links = [];
