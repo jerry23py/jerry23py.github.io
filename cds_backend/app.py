@@ -507,14 +507,12 @@ def upload_image():
             )
 
             db.session.add(image)
+            db.session.commit()
             uploaded_urls.append(result['secure_url'])
         except Exception as e:
+            db.session.rollback()
             app.logger.error(f"Upload or DB insert failed for file {f.filename}: {e}")
             continue
-        
-        
-
-    db.session.commit()
     
     if len(uploaded_urls) == 0:
         return jsonify({'message': 'No valid images were uploaded'}), 400
