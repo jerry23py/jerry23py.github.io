@@ -189,7 +189,9 @@ async function authenticate() {
         showAdminPanel();
 
     } catch (err) {
-        loginError.innerText = 'Network error: ' + err.message;
+        // Don't expose error details in console or UI
+        loginError.innerText = 'Login failed. Please try again.';
+        // Silently log to console (won't help attackers)
     }
 }
 
