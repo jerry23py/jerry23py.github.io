@@ -58,7 +58,11 @@
 
     <a id="downloadBtn" href="#" onclick="downloadCSV()">Download CSV</a>
     <button id="resetDbBtn" style="background:#ff6b6b;color:#fff;margin-left:12px;padding:10px 14px;border-radius:5px;border:none;cursor:pointer;" onclick="resetDonations()">Reset Donations DB</button>
-    <button onclick="deleteImage(imageId)">Delete</button>
+    
+    <h3 style="margin-top:20px">Manage Gallery Images</h3>
+    <div id="galleryManagement" style="margin-bottom:20px;">
+        <div id="galleryList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;"></div>
+    </div>
     <h3 style="margin-top:20px">Pending Donations</h3>
     <table>
         <thead>
@@ -206,6 +210,7 @@ function showAdminPanel() {
     loadPendingDonations();
     loadPaidMembers();
     loadBankAccounts();
+    loadGalleryImages();
 }
 
 // Auto login if still valid in this tab
@@ -501,7 +506,9 @@ async function addBankAccount() {
 }
  //Example delete button for an image with ID stored in a variable `imageId` 
   async function deleteImage(imageId) {
-    const token = localStorage.getItem('adminToken'); // or wherever you keep your admin token
+    if (!confirm('Delete this image?')) return;
+    
+    const token = sessionStorage.getItem('adminToken');
 
     if (!token) {
       alert("Please login as admin first.");
@@ -509,7 +516,7 @@ async function addBankAccount() {
     }
 
     try {
-      const res = await fetch(`/admin/delete-image/${imageId}`, {
+      const res = await fetch(`${API_URL}/admin/delete-image/${imageId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -518,8 +525,7 @@ async function addBankAccount() {
 
       if (res.ok) {
         alert('Image deleted successfully.');
-        const elem = document.getElementById(`image-${imageId}`);
-        if (elem) elem.remove();
+        loadGalleryImages();
       } else {
         const error = await res.json();
         alert('Delete failed: ' + (error.message || res.statusText));
@@ -528,6 +534,37 @@ async function addBankAccount() {
       alert('Network error: ' + e.message);
     }
   }
+
+// Load gallery images for management
+async function loadGalleryImages() {
+    const container = document.getElementById('galleryList');
+    container.innerHTML = 'Loading gallery...';
+    
+    try {
+        const res = await fetch(`${API_URL}/gallery`);
+        if (!res.ok) throw new Error(`Server error: ${res.status}`);
+        
+        const images = await res.json();
+        
+        if (!images || images.length === 0) {
+            container.innerHTML = '<p>No images in gallery yet.</p>';
+            return;
+        }
+        
+        container.innerHTML = images.map(img => `
+            <div id="image-${img.id}" style="border:1px solid #ddd;border-radius:8px;overflow:hidden;background:#f9f9f9;">
+                <img src="${img.url}" alt="${img.title || 'Gallery'}" style="width:100%;height:120px;object-fit:cover;display:block;">
+                <div style="padding:8px;font-size:0.85rem;">
+                    <div><strong>${img.title || 'Untitled'}</strong></div>
+                    <div style="color:#666;font-size:0.8rem;margin:4px 0;">${img.taken_at ? new Date(img.taken_at).toLocaleDateString() : 'No date'}</div>
+                    <button onclick="deleteImage(${img.id})" style="width:100%;background:#ff6b6b;color:white;border:none;padding:6px;border-radius:4px;cursor:pointer;margin-top:4px;">Delete</button>
+                </div>
+            </div>
+        `).join('');
+    } catch (err) {
+        container.innerHTML = 'Error loading gallery: ' + err.message;
+    }
+}
 
 
 async function deleteBank(id) {
