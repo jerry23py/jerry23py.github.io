@@ -105,6 +105,19 @@ class BankAccount(db.Model):
 with app.app_context():
     db.create_all()
     app.logger.info("Database tables created successfully")
+    
+    # Auto-migrate: Add missing columns if they don't exist (for PostgreSQL on Render)
+    try:
+        if "postgresql" in app.config.get("SQLALCHEMY_DATABASE_URI", ""):
+            migration_sql = """
+            ALTER TABLE images ADD COLUMN IF NOT EXISTS url VARCHAR(500);
+            ALTER TABLE images ADD COLUMN IF NOT EXISTS public_id VARCHAR(255);
+            """
+            db.session.execute(db.text(migration_sql))
+            db.session.commit()
+            app.logger.info("Images table migration completed")
+    except Exception as e:
+        app.logger.warning(f"Images table already up to date or migration not needed: {e}")
 
 
 # Helper Functions
