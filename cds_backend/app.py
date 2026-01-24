@@ -106,7 +106,7 @@ with app.app_context():
     db.create_all()
     app.logger.info("Database tables created successfully")
     
-    # Auto-migrate: Add missing columns if they don't exist (for PostgreSQL on Render)
+    # Auto-migrate images table to add url and public_id if not existing
     try:
         if "postgresql" in app.config.get("SQLALCHEMY_DATABASE_URI", ""):
             migration_sql = """
