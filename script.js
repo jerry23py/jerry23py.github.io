@@ -38,7 +38,7 @@ if (form) {
     statusDiv.textContent = 'Sending message...';
     statusDiv.style.color = '';
 
-    // MOCK API call (replace with real endpoint later)
+    
     try {
       await new Promise(r => setTimeout(r, 1200)); // simulate network
       // pretend success response

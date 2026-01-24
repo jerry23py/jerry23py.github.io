@@ -1,6 +1,4 @@
-/* ----------------------------------
-   Base Styles
----------------------------------- */
+
 * {
   margin: 0;
   padding: 0;
@@ -29,9 +27,7 @@ img {
   margin: 0 auto;
 }
 
-/* ----------------------------------
-   Header / Navbar
----------------------------------- */
+
 header {
   background: #d30000;
   color: #fff;
@@ -101,7 +97,7 @@ header {
 }
 
 .hero {
-  /* Local hero image (provided path: image/CDS.jpg) */
+ 
   background-color: #b30000; /* fallback color if image fails */
   background-image: url('image/CDS.jpg');
   background-position: center;
@@ -192,23 +188,21 @@ header {
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* Space between hero paragraph and call-to-action buttons */
+
 .cta-row {
   margin-top: 24px;
 }
 
-/* ----------------------------------
-   Sections General
----------------------------------- */
+
 .section {
   padding: 60px 0;
   text-align: left;
 }
 
 .about-image img {
-    max-width: 20%; /* Ensures the image is responsive within its container */
+    max-width: 20%; 
     height: auto;
-    display: block; /* Helps with alignment issues */
+    display: block; 
     right: auto;
 }
 .section.light {
@@ -220,9 +214,7 @@ header {
   margin-bottom: 20px;
 }
 
-/* ----------------------------------
-   Mission / About two-column layout
----------------------------------- */
+
 .mission-grid {
   display: grid;
   grid-template-columns: 1fr 360px;
@@ -249,9 +241,7 @@ header {
   }
 }
 
-/* ----------------------------------
-   Compact gallery slider
----------------------------------- */
+
 .gallery-wrap {
   position: relative;
 }
@@ -307,9 +297,7 @@ header {
   .gallery-slider { height: 160px; }
 }
 
-/* ----------------------------------
-   Grid for Programs
----------------------------------- */
+
 .grid {
   display: grid;
   gap: 25px;
@@ -338,17 +326,13 @@ header {
   margin-bottom: 10px;
 }
 
-/* ----------------------------------
-   Resources Section
----------------------------------- */
+
 #resources ul {
   line-height: 2;
   font-size: 17px;
 }
 
-/* ----------------------------------
-   Contact section
----------------------------------- */
+
 .two-col {
   display: grid;
   grid-template-columns: 2fr 1fr;
@@ -427,9 +411,7 @@ footer {
     color: #aaa;
 }
 
-/* ----------------------------------
-   Footer
----------------------------------- */
+
 footer {
   background: #222;
   padding: 20px 0;
@@ -442,9 +424,7 @@ footer small {
   opacity: 0.8;
 }
 
-/* ----------------------------------
-   Responsive Styling
----------------------------------- */
+
 
 /* Mobile Navigation */
 @media (max-width: 768px) {
@@ -492,9 +472,7 @@ footer small {
   }
 }
 
-/* ----------------------------------
-   Accessibility Focus Styles
----------------------------------- */
+
 :focus {
   outline: 3px solid #d30000;
   outline-offset: 3px;

@@ -1,8 +1,6 @@
-// Backend URL comes from `frontend_cds/config.js` (window.BACKEND_URL).
-// Fall back to localhost for local development if not provided.
+// frontend_cds/donate.js
 const BACKEND_URL = window.BACKEND_URL || 'https://antihiv-aids-cds.onrender.com';
 
-// ----------------- DONATION FORM SUBMISSION -----------------
 const form = document.getElementById("donationForm");
 function generateUUID() {
     // Simple UUID v4 generator
@@ -22,7 +20,7 @@ if (form) {
     if (!form.dataset.idempotencyKey) {
         form.dataset.idempotencyKey = generateUUID();
         }
-         // ✅ add idempotency key to FormData
+         // add idempotency key to FormData
     fd.set("idempotency_key", form.dataset.idempotencyKey);
 
     // ... rest of fetch logic
@@ -30,7 +28,7 @@ if (form) {
 
     
 
-        // 🔐 HARD LOCK
+        // HARD LOCK
         if (form.dataset.submitted === "true") {
             alert("This donation has already been submitted.");
             return;
@@ -50,7 +48,7 @@ if (form) {
         if (statusEl) statusEl.innerText = "Processing...";
         showLoading('Uploading proof…');
 
-        // ✅ fd MUST be created BEFORE fetch
+
        
         fd.append('fullname', document.getElementById("fullname").value);
         fd.append('email', document.getElementById("email").value);
@@ -81,13 +79,13 @@ if (form) {
             let results;
 
             if (contentType.includes("application/json")) {
-                results = await resp.json();   // ✅ read once
+                results = await resp.json();   
             } else {
-                const text = await resp.text(); // ✅ read once
+                const text = await resp.text(); 
                 results = { message: text };
             }
            
-            // ✅ Handle 409 Conflict separately
+           
             if (resp.status === 409) {
                 if (statusEl) statusEl.innerText =
                 `Duplicate donation detected. Reference: ${results.reference}. ${results.message || ''}`;
